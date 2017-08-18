@@ -6,6 +6,13 @@ import (
 )
 
 func main() {
-	fmt.Printf("%+v\n", prepare.HashFileParts("borap.mp3", 1024, 1024))
-	fmt.Printf("%+v\n", prepare.HashFile("borap.mp3", 1024))
+  identityUpload := prepare.NewSinglePartUpload("borap.mp3")
+  fmt.Printf("%+v\n", identityUpload)
+  gzipUpload := prepare.NewGzipSinglePartUpload("borap.mp3")
+  fmt.Printf("%+v\n", gzipUpload)
+
+  identityMUpload := prepare.NewMultiPartUpload("borap.mp3")
+  fmt.Printf("%+v\n", identityMUpload)
+  gzipMUpload := prepare.NewGzipMultiPartUpload("borap.mp3")
+  fmt.Printf("%+v\n", gzipMUpload)
 }
