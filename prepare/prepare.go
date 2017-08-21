@@ -9,15 +9,16 @@ import (
 	"io/ioutil"
 	"math"
 	"os"
+	"time"
 )
 
-type SinglePartFileInfo struct {
+type singlePartFileInfo struct {
 	Sha256 []byte
 	Size   int64
 }
 
 // Returns a buffer which represents a SHA256 checksum of the requested file
-func HashFile(filename string, chunkSize int) SinglePartFileInfo {
+func hashFile(filename string, chunkSize int) singlePartFileInfo {
 	// Create a file handle
 	f, err := os.Open(filename)
 	if err != nil {
@@ -57,7 +58,6 @@ func HashFile(filename string, chunkSize int) SinglePartFileInfo {
 		// because go will (thankfully) require that the types are the same to add
 		// them
 		totalBytes += int64(nBytes)
-
 	}
 
 	if totalBytes != size {
@@ -71,10 +71,10 @@ func HashFile(filename string, chunkSize int) SinglePartFileInfo {
 		panic(err)
 	}
 
-	return SinglePartFileInfo{hash.Sum(nil), totalBytes}
+	return singlePartFileInfo{hash.Sum(nil), totalBytes}
 }
 
-type CompressedSinglePartFileInfo struct {
+type compressedSinglePartFileInfo struct {
 	Sha256          []byte
 	Size            int64
 	TransferSha256  []byte
@@ -83,7 +83,7 @@ type CompressedSinglePartFileInfo struct {
 }
 
 // Compress a file and return metadata for its upload
-func GzipAndHashFile(inFilename, outFilename string, chunkSize int) CompressedSinglePartFileInfo {
+func gzipAndHashFile(inFilename, outFilename string, chunkSize int) compressedSinglePartFileInfo {
 	// Create a file handle
 	f, err := os.Open(inFilename)
 	if err != nil {
@@ -119,10 +119,10 @@ func GzipAndHashFile(inFilename, outFilename string, chunkSize int) CompressedSi
 	gzipWriter := gzip.NewWriter(io.MultiWriter(transferHash, of))
 	defer gzipWriter.Close()
 
-	// We also want to write the output to the content-sha256 and gzip.
-	// NOTE: this isn't working because the hash needs the slice to be sliced
-	// but the gzip writer needs the slice to not be sliced
-	//output := io.MultiWriter(hash, gzipWriter)
+	// We're setting constant headers so that gzip has deterministic output
+	gzipWriter.ModTime = time.Date(2000, time.January, 0, 0, 0, 0, 0, time.UTC)
+
+	output := io.MultiWriter(gzipWriter, hash)
 
 	for {
 		nBytes, err := f.Read(buf)
@@ -133,16 +133,9 @@ func GzipAndHashFile(inFilename, outFilename string, chunkSize int) CompressedSi
 			panic(err)
 		}
 
-		// Question for reviewers: Should I use copy() here instead?  Would it
-		// automatically handle the :nBytes part of my slice here?  The problem is
-		// that if I just write the whole buffer to output (or hash in the non-gzip
-		// version), I'm also writing a bunch of zero-values, I think
-		//
-		// second Question: When I do the gzip writer with buf[:nBytes] I lose some
-		// of the remaining bytes but when I do the hash write with just buf I get
-		// an incorrect sha256
-		hash.Write(buf[:nBytes])
-		gzipWriter.Write(buf)
+		if _, err := output.Write(buf[:nBytes]); err != nil {
+			panic(err)
+		}
 
 		// Even though nBytes is quite small compared to an int64, we must cast it
 		// because go will (thankfully) require that the types are the same to add
@@ -162,8 +155,8 @@ func GzipAndHashFile(inFilename, outFilename string, chunkSize int) CompressedSi
 		panic(err)
 	}
 
-	// We need to ensure that the files are all written out before we stat the file
-	gzipWriter.Flush()
+	// We need to close the Gzip writer otherwise we don't
+	gzipWriter.Close()
 	if err := of.Sync(); err != nil {
 		panic(err)
 	}
@@ -173,7 +166,7 @@ func GzipAndHashFile(inFilename, outFilename string, chunkSize int) CompressedSi
 		panic(err)
 	}
 
-	return CompressedSinglePartFileInfo{hash.Sum(nil), totalBytes, transferHash.Sum(nil), ofi.Size(), "gzip"}
+	return compressedSinglePartFileInfo{hash.Sum(nil), totalBytes, transferHash.Sum(nil), ofi.Size(), "gzip"}
 }
 
 type Part struct {
@@ -182,7 +175,11 @@ type Part struct {
 	Start  int64
 }
 
-type MultiPartFileInfo struct {
+func (u Part) String() string {
+  return fmt.Sprintf("Sha256: %x, Size: %d, Start: %d", u.Sha256, u.Size, u.Start)
+}
+
+type multiPartFileInfo struct {
 	Sha256 []byte
 	Size   int64
 	Parts  []Part
@@ -191,7 +188,7 @@ type MultiPartFileInfo struct {
 // Hash a file, but also figure out the hashes of sub parts.  A sub part is the
 // number of bytes obtained by multiplying chunkSize by chunksInPart.  This is
 // done to simplify the calculation of the parts
-func HashFileParts(filename string, chunkSize, chunksInPart int) MultiPartFileInfo {
+func hashFileParts(filename string, chunkSize, chunksInPart int) multiPartFileInfo {
 	// Create a file handle
 	f, err := os.Open(filename)
 	if err != nil {
@@ -231,7 +228,7 @@ func HashFileParts(filename string, chunkSize, chunksInPart int) MultiPartFileIn
 	for {
 		nBytes, err := f.Read(buf)
 		if nBytes == 0 {
-			parts[len(parts)-1] = Part{partHash.Sum(nil), currentPartSize, int64(totalParts-1) * partSize}
+			parts[totalParts-1] = Part{partHash.Sum(nil), currentPartSize, int64(totalParts-1) * partSize}
 			break
 		}
 		if err != nil {
@@ -270,7 +267,7 @@ func HashFileParts(filename string, chunkSize, chunksInPart int) MultiPartFileIn
 		panic(err)
 	}
 
-	return MultiPartFileInfo{hash.Sum(nil), totalBytes, parts}
+	return multiPartFileInfo{hash.Sum(nil), totalBytes, parts}
 }
 
 type SinglePartUpload struct {
@@ -292,7 +289,7 @@ func (u SinglePartUpload) String() string {
 func NewSinglePartUploadWithDetails(inFilename, outFilename string, gzip bool) SinglePartUpload {
 	chunkSize := 1024 * 128 // 128KB
 	if gzip {
-		gzipped := GzipAndHashFile(inFilename, outFilename, chunkSize)
+		gzipped := gzipAndHashFile(inFilename, outFilename, chunkSize)
 		return SinglePartUpload{
 			Filename:        outFilename,
 			Sha256:          gzipped.Sha256,
@@ -302,7 +299,7 @@ func NewSinglePartUploadWithDetails(inFilename, outFilename string, gzip bool) S
 			ContentEncoding: gzipped.ContentEncoding,
 		}
 	} else {
-		identity := HashFile(inFilename, chunkSize)
+		identity := hashFile(inFilename, chunkSize)
 		return SinglePartUpload{
 			Filename:        inFilename,
 			Sha256:          identity.Sha256,
@@ -365,15 +362,21 @@ func (u MultiPartUpload) String() string {
 // Cleaning up the scratch file is the responsibility of the caller
 func NewMultiPartUploadWithDetails(inFilename, outFilename string, gzip bool) MultiPartUpload {
 
-	chunkSize := 1024 * 128                       // 128KB
-	chunksInPart := (1024 * 1024 * 5) / chunkSize // 5MB Chunks
+	chunkSize := 1024 * 128     // 128KB
+	partSize := 1024 * 1024 * 5 // 5MB Chunks
+
+	if partSize < 1024*1024*5 {
+		panic(fmt.Errorf("Partsize must be at least 5 MB, not %d", partSize))
+	}
+
+	chunksInPart := partSize / chunkSize
 
 	if gzip {
-		gzipped := GzipAndHashFile(inFilename, outFilename, chunkSize)
-		hashedParts := HashFileParts(outFilename, chunkSize, chunksInPart)
+		gzipped := gzipAndHashFile(inFilename, outFilename, chunkSize)
+		hashedParts := hashFileParts(outFilename, chunkSize, chunksInPart)
 		// We want to make sure that the same file which we compressed is the file
 		// that we broke into parts and hashed the parts
-		if bytes.Equal(hashedParts.Sha256, gzipped.TransferSha256) {
+		if ! bytes.Equal(hashedParts.Sha256, gzipped.TransferSha256) {
 			panic(fmt.Errorf("File changed between compression and hashing of parts"))
 		}
 		return MultiPartUpload{
@@ -386,7 +389,7 @@ func NewMultiPartUploadWithDetails(inFilename, outFilename string, gzip bool) Mu
 			Parts:           hashedParts.Parts,
 		}
 	} else {
-		hashedParts := HashFileParts(inFilename, chunkSize, chunksInPart)
+		hashedParts := hashFileParts(inFilename, chunkSize, chunksInPart)
 		return MultiPartUpload{
 			Filename:        outFilename,
 			Sha256:          hashedParts.Sha256,
