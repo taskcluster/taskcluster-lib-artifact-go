@@ -176,7 +176,7 @@ type Part struct {
 }
 
 func (u Part) String() string {
-  return fmt.Sprintf("Sha256: %x, Size: %d, Start: %d", u.Sha256, u.Size, u.Start)
+	return fmt.Sprintf("Sha256: %x, Size: %d, Start: %d", u.Sha256, u.Size, u.Start)
 }
 
 type multiPartFileInfo struct {
@@ -376,7 +376,7 @@ func NewMultiPartUploadWithDetails(inFilename, outFilename string, gzip bool) Mu
 		hashedParts := hashFileParts(outFilename, chunkSize, chunksInPart)
 		// We want to make sure that the same file which we compressed is the file
 		// that we broke into parts and hashed the parts
-		if ! bytes.Equal(hashedParts.Sha256, gzipped.TransferSha256) {
+		if !bytes.Equal(hashedParts.Sha256, gzipped.TransferSha256) {
 			panic(fmt.Errorf("File changed between compression and hashing of parts"))
 		}
 		return MultiPartUpload{
