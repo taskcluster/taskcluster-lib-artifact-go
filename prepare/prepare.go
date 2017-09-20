@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"os"
 	"strings"
@@ -229,7 +228,6 @@ func hashFileParts(filename string, chunkSize, chunksInPart int) (multiPartFileI
 	// We need to know the theoretically maximum partSize
 	partSize := int64(chunkSize * chunksInPart)
 	totalParts := int(math.Ceil(float64(size) / float64(partSize)))
-	fmt.Printf("size: %d partSize: %d totalParts: %d\n", size, partSize, totalParts)
 	// TODO the +1 is a bug
 	parts := make([]Part, totalParts)
 
@@ -436,23 +434,8 @@ func NewMultiPartUploadWithDetails(inFilename, outFilename string, gzip bool) (M
 // property for which cleanup is the responsibility of the caller of this
 // function
 func NewGzipMultiPartUpload(filename string) (MultiPartUpload, error) {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return MultiPartUpload{}, err
-	}
-
-	tmpfile, err := ioutil.TempFile(cwd, filename+".gz_")
-	if err != nil {
-		return MultiPartUpload{}, err
-	}
-
-	// We immediately close the file because we're only using it to create the
-	// name
-	if err := tmpfile.Close(); err != nil {
-		return MultiPartUpload{}, err
-	}
-
-	return NewMultiPartUploadWithDetails(filename, tmpfile.Name(), true)
+	// TODO: Make the output filename a parameter and update tests to match that
+	return NewMultiPartUploadWithDetails(filename, filename+".gz", true)
 }
 
 // Prepare a new identity-encoded (e.g. no encoding) multi part upload.  This does not

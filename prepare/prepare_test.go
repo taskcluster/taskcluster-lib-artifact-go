@@ -33,7 +33,6 @@ func testMPUpload(upload MultiPartUpload) error {
 			return err
 		}
 		defer body.Close()
-		body.Print()
 
 		nBytes, err := body.Read(buf)
 		if err != nil {
