@@ -11,7 +11,7 @@ import (
 )
 
 func testMPUpload(upload MultiPartUpload) error {
-	of, err := os.Create("output")
+	of, err := os.Create("_output.dat")
 	if err != nil {
     return err
 	}
@@ -65,7 +65,7 @@ func testMPUpload(upload MultiPartUpload) error {
 }
 
 func testSPUpload(upload SinglePartUpload) error {
-	of, err := os.Create("output")
+	of, err := os.Create("_output.dat")
 	if err != nil {
     return err
 	}
@@ -118,32 +118,38 @@ func TestUploadPreperation(t *testing.T) {
     of.Close()
   }
   
-  /*t.Run("multipart gzip", func(t *testing.T) {
-    t.Parallel()
-    upload := NewGzipMultiPartUpload(filename)
-    t.Log(upload.String())
-    err := testMPUpload(upload)
+  t.Run("multipart gzip", func(t *testing.T) {
+    upload, err := NewGzipMultiPartUpload(filename)
     if err != nil {
       t.Error(err)
     }
-    t.Log("Completed")
-  })*/
-
-  t.Run("multipart identity", func(t *testing.T) {
-    t.Parallel()
-    upload := NewMultiPartUpload(filename)
     t.Log(upload.String())
-    err := testMPUpload(upload)
+    err = testMPUpload(upload)
     if err != nil {
       t.Error(err)
     }
     t.Log("Completed")
   })
 
-  /*t.Run("singlepart gzip", func(t *testing.T) {
-    t.Parallel()
-    upload := NewGzipSinglePartUpload(filename)
-    err := testSPUpload(upload)
+  t.Run("multipart identity", func(t *testing.T) {
+    upload, err := NewMultiPartUpload(filename)
+    if err != nil {
+      t.Error(err)
+    }
+    t.Log(upload.String())
+    err = testMPUpload(upload)
+    if err != nil {
+      t.Error(err)
+    }
+    t.Log("Completed")
+  })
+
+  t.Run("singlepart gzip", func(t *testing.T) {
+    upload, err := NewGzipSinglePartUpload(filename)
+    if err != nil {
+      t.Error(err)
+    }
+    err = testSPUpload(upload)
     if err != nil {
       t.Error(err)
     }
@@ -151,14 +157,16 @@ func TestUploadPreperation(t *testing.T) {
   })
 
   t.Run("singlepart identity", func(t *testing.T) {
-    t.Parallel()
-    upload := NewSinglePartUpload(filename)
-    err := testSPUpload(upload)
+    upload, err := NewSinglePartUpload(filename)
+    if err != nil {
+      t.Error(err)
+    }
+    err = testSPUpload(upload)
     if err != nil {
       t.Error(err)
     }
     t.Log("Completed")
-  })*/
+  })
 
   // Now let's run the tests
   // ...
