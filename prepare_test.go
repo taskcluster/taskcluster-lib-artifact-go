@@ -1,4 +1,4 @@
-package prepare
+package main
 
 import (
 	"bytes"
@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-func testMPUpload(upload MultiPartUpload) error {
+func testMPUpload(upload multiPartUpload) error {
 	of, err := os.Create("_output.dat")
 	if err != nil {
 		return err
@@ -46,15 +46,15 @@ func testMPUpload(upload MultiPartUpload) error {
 		totalBytes += int64(nBytes)
 
 		if !bytes.Equal(hash.Sum(nil), part.Sha256) {
-			return fmt.Errorf("Checksum mismatch: %s != %s\n", hash.Sum(nil), part.Sha256)
+			return fmt.Errorf("Checksum mismatch (part): %+v != %+v\n", hash.Sum(nil), part.Sha256)
 		}
 		if int64(nBytes) != part.Size {
-			return fmt.Errorf("Size mismatch: %s != %s\n", nBytes, part.Size)
+			return fmt.Errorf("Size mismatch (part): %s != %s\n", nBytes, part.Size)
 		}
 	}
 
 	if !bytes.Equal(overallHash.Sum(nil), upload.TransferSha256) {
-		return fmt.Errorf("Checksum mismatch: %s != %s\n", overallHash.Sum(nil), upload.TransferSha256)
+		return fmt.Errorf("Checksum mismatch: %+v != %+v\n", overallHash.Sum(nil), upload.TransferSha256)
 	}
 	if totalBytes != upload.TransferSize {
 		return fmt.Errorf("Size mismatch: %s != %s\n", totalBytes, upload.TransferSize)
@@ -63,7 +63,7 @@ func testMPUpload(upload MultiPartUpload) error {
 	return nil
 }
 
-func testSPUpload(upload SinglePartUpload) error {
+func testSPUpload(upload singlePartUpload) error {
 	of, err := os.Create("_output.dat")
 	if err != nil {
 		return err
@@ -88,7 +88,7 @@ func testSPUpload(upload SinglePartUpload) error {
 	of.Write(buf[:nBytes])
 
 	if !bytes.Equal(hash.Sum(nil), upload.TransferSha256) {
-		return fmt.Errorf("Checksum mismatch: %s != %s\n", hash.Sum(nil), upload.TransferSha256)
+		return fmt.Errorf("Checksum mismatch: %+v != %+v\n", hash.Sum(nil), upload.TransferSha256)
 	}
 	if int64(nBytes) != upload.TransferSize {
 		return fmt.Errorf("Size mismatch: %s != %s\n", nBytes, upload.TransferSize)
@@ -119,7 +119,9 @@ func TestUploadPreperation(t *testing.T) {
 	}
 
 	t.Run("multipart gzip", func(t *testing.T) {
-		upload, err := NewGzipMultiPartUpload(filename)
+    chunkSize := 128 * 1024
+    chunksInPart := 5 * 1024 * 1024 / chunkSize
+		upload, err := NewMultiPartUpload(filename, filename+".gz", chunkSize, chunksInPart, true)
 		if err != nil {
 			t.Error(err)
 		}
@@ -132,7 +134,9 @@ func TestUploadPreperation(t *testing.T) {
 	})
 
 	t.Run("multipart identity", func(t *testing.T) {
-		upload, err := NewMultiPartUpload(filename)
+    chunkSize := 128 * 1024
+    chunksInPart := 5 * 1024 * 1024 / chunkSize
+		upload, err := NewMultiPartUpload(filename, filename+".gz", chunkSize, chunksInPart, false)
 		if err != nil {
 			t.Error(err)
 		}
@@ -145,7 +149,8 @@ func TestUploadPreperation(t *testing.T) {
 	})
 
 	t.Run("singlepart gzip", func(t *testing.T) {
-		upload, err := NewGzipSinglePartUpload(filename)
+    chunkSize := 128 * 1024
+		upload, err := NewSinglePartUpload(filename, filename + ".gz", chunkSize, true)
 		if err != nil {
 			t.Error(err)
 		}
@@ -157,7 +162,8 @@ func TestUploadPreperation(t *testing.T) {
 	})
 
 	t.Run("singlepart identity", func(t *testing.T) {
-		upload, err := NewSinglePartUpload(filename)
+    chunkSize := 128 * 1024
+		upload, err := NewSinglePartUpload(filename, filename + ".gz", chunkSize, false)
 		if err != nil {
 			t.Error(err)
 		}

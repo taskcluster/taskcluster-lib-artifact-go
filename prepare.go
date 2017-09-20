@@ -1,4 +1,4 @@
-package prepare
+package main
 
 import (
 	"bytes"
@@ -12,12 +12,84 @@ import (
 	"time"
 )
 
+// Internal struct for hashing a simple single part file without compression
 type singlePartFileInfo struct {
 	Sha256 []byte
 	Size   int64
 }
 
-// Returns a buffer which represents a SHA256 checksum of the requested file
+// Internal struct for hashing a simple single part file with compression
+type compressedSinglePartFileInfo struct {
+	Sha256          []byte
+	Size            int64
+	TransferSha256  []byte
+	TransferSize    int64
+	ContentEncoding string
+}
+
+// Internal struct for hashing a simple single part file without compression
+type multiPartFileInfo struct {
+	Sha256 []byte
+	Size   int64
+	Parts  []part
+}
+
+// A singlePartUpload represents the information required to do an upload of a
+// single part file with or without compression.
+type singlePartUpload struct {
+	Filename        string
+	Sha256          []byte
+	Size            int64
+	TransferSha256  []byte
+	TransferSize    int64
+	ContentEncoding string
+}
+
+func (u singlePartUpload) String() string {
+	return fmt.Sprintf("Single Part Upload Filename: %s, Sha256: %x, Size: %d, TransferSha256: %x, TransferSize: %d, ContentEncoding: %s",
+		u.Filename, u.Sha256, u.Size, u.TransferSha256, u.TransferSize, u.ContentEncoding)
+}
+
+// A Part represents the information about a single part of a multipart upload
+type part struct {
+	Sha256 []byte
+	Size   int64
+	Start  int64
+}
+
+func (u part) String() string {
+	return fmt.Sprintf("Sha256: %x, Start: %d, Size: %d", u.Sha256, u.Start, u.Size)
+}
+
+// A multiPartUpload represents the information about a multipart upload
+type multiPartUpload struct {
+	Filename        string
+	Sha256          []byte
+	Size            int64
+	TransferSha256  []byte
+	TransferSize    int64
+	ContentEncoding string
+	Parts           []part
+}
+
+func (u multiPartUpload) String() string {
+	var partsStrings []string
+	for _, part := range u.Parts {
+		partsStrings = append(partsStrings, part.String())
+	}
+	partsString := strings.Join(partsStrings, "}, {")
+	return fmt.Sprintf(
+    "Multi-part File Upload Filename: %s , Sha256: %x, Size: %d, " +
+    "TransferSha256: %x, TransferSize: %d, ContentEncoding: %s, Parts: [{%s}]",
+		u.Filename, u.Sha256, u.Size, u.TransferSha256, u.TransferSize, u.ContentEncoding, partsString)
+}
+
+
+// Hash a file and count the number of bytes in it in a single pass.  File is
+// streamed and an effort is made to ensure that if the file is modified during
+// the process that the function return an error.  The `chunkSize` parameter is
+// the maximum number of bytes that will be read in each attempt to read the
+// file
 func hashFile(filename string, chunkSize int) (singlePartFileInfo, error) {
 	// Create a file handle
 	f, err := os.Open(filename)
@@ -74,15 +146,13 @@ func hashFile(filename string, chunkSize int) (singlePartFileInfo, error) {
 	return singlePartFileInfo{hash.Sum(nil), totalBytes}, nil
 }
 
-type compressedSinglePartFileInfo struct {
-	Sha256          []byte
-	Size            int64
-	TransferSha256  []byte
-	TransferSize    int64
-	ContentEncoding string
-}
-
-// Compress a file and return metadata for its upload
+// Compress a file, hashing the contents and counting the bytes both before and
+// after the compressor.  Compression and hashing operations are done using
+// streaming.  An effort is made to check if the file has changed while the
+// operation was being performed.  The `outFilename` parameter is a file path
+// where the output should be written and will truncate an existing file at
+// this location.  The `chunkSize` parameter represents the maximum number of
+// bytes to read in any given read attempt.
 func gzipAndHashFile(inFilename, outFilename string, chunkSize int) (compressedSinglePartFileInfo, error) {
 	// Create a file handle
 	f, err := os.Open(inFilename)
@@ -171,25 +241,13 @@ func gzipAndHashFile(inFilename, outFilename string, chunkSize int) (compressedS
 	return compressedSinglePartFileInfo{hash.Sum(nil), totalBytes, transferHash.Sum(nil), ofi.Size(), "gzip"}, nil
 }
 
-type Part struct {
-	Sha256 []byte
-	Size   int64
-	Start  int64
-}
 
-func (u Part) String() string {
-	return fmt.Sprintf("Sha256: %x, Start: %d, Size: %d", u.Sha256, u.Start, u.Size)
-}
-
-type multiPartFileInfo struct {
-	Sha256 []byte
-	Size   int64
-	Parts  []Part
-}
-
-// Hash a file, but also figure out the hashes of sub parts.  A sub part is the
-// number of bytes obtained by multiplying chunkSize by chunksInPart.  This is
-// done to simplify the calculation of the parts
+// In a single pass, hash a file as well as the parts based on the chunkSize
+// and chunksInPart parameters.  The chunkSize is the.  The `chunkSize`
+// parameter is the maximum number of bytes to read in a single read attempt.
+// The `chunksInPart` parameter is the maximum number of `chunkSize` sized
+// chunks in each part.  The maximum part size is therefore `chunkSize *
+// chunksInPart`.
 func hashFileParts(filename string, chunkSize, chunksInPart int) (multiPartFileInfo, error) {
 	// Create a file handle
 	f, err := os.Open(filename)
@@ -229,13 +287,13 @@ func hashFileParts(filename string, chunkSize, chunksInPart int) (multiPartFileI
 	partSize := int64(chunkSize * chunksInPart)
 	totalParts := int(math.Ceil(float64(size) / float64(partSize)))
 	// TODO the +1 is a bug
-	parts := make([]Part, totalParts)
+	parts := make([]part, totalParts)
 
 	for {
 		nBytes, err := f.Read(buf)
 		if nBytes == 0 {
 			if currentPartSize > 0 {
-				parts[currentPart] = Part{partHash.Sum(nil), currentPartSize, int64(currentPart) * partSize}
+				parts[currentPart] = part{partHash.Sum(nil), currentPartSize, int64(currentPart) * partSize}
 			}
 			break
 		}
@@ -258,7 +316,7 @@ func hashFileParts(filename string, chunkSize, chunksInPart int) (multiPartFileI
 		// if we're in the last chunk of the part
 		if currentPartChunk == (chunksInPart - 1) {
 			// If we're in the last chunk, we should set the part information
-			parts[currentPart] = Part{partHash.Sum(nil), currentPartSize, int64(currentPart) * partSize}
+			parts[currentPart] = part{partHash.Sum(nil), currentPartSize, int64(currentPart) * partSize}
 			partHash.Reset()
 			currentPartChunk = 0
 			currentPart++
@@ -286,28 +344,22 @@ func hashFileParts(filename string, chunkSize, chunksInPart int) (multiPartFileI
 	return multiPartFileInfo{hash.Sum(nil), totalBytes, parts}, nil
 }
 
-type SinglePartUpload struct {
-	Filename        string
-	Sha256          []byte
-	Size            int64
-	TransferSha256  []byte
-	TransferSize    int64
-	ContentEncoding string
-}
-
-func (u SinglePartUpload) String() string {
-	return fmt.Sprintf("Single Part Upload Filename: %s, Sha256: %x, Size: %d, TransferSha256: %x, TransferSize: %d, ContentEncoding: %s",
-		u.Filename, u.Sha256, u.Size, u.TransferSha256, u.TransferSize, u.ContentEncoding)
-}
-
-// Prepare a single part file upload with a scratch file for gzip encoding if requested
-// Cleaning up the scratch file is the responsibility of the caller
-func NewSinglePartUploadWithDetails(inFilename, outFilename string, gzip bool) (SinglePartUpload, error) {
-	chunkSize := 1024 * 128 // 128KB
+// Prepare a single part upload with or without gzip encoding.  If gzip
+// encoding is used, the `outFilename` parameter is the file path where the
+// intermediate gzip-encoded file is stored.  Any file at this path will be
+// truncated.  It is the responsibility of the caller to remove this file after
+// they have uploaded the file.  The `chunkSize` parameter is the maximum
+// number of bytes that should be read from the `inFilename` file in each read
+// attempt
+func NewSinglePartUpload(inFilename, outFilename string, chunkSize int, gzip bool) (singlePartUpload, error) {
 	if gzip {
+    if outFilename == "" {
+      err := fmt.Errorf("When using gzip encoding, an outFilename value must be provided")
+      return singlePartUpload{}, err
+    }
 		gzipped, err := gzipAndHashFile(inFilename, outFilename, chunkSize)
 		if err == nil {
-			return SinglePartUpload{
+			return singlePartUpload{
 				Filename:        outFilename,
 				Sha256:          gzipped.Sha256,
 				Size:            gzipped.Size,
@@ -316,12 +368,12 @@ func NewSinglePartUploadWithDetails(inFilename, outFilename string, gzip bool) (
 				ContentEncoding: gzipped.ContentEncoding,
 			}, nil
 		} else {
-			return SinglePartUpload{}, err
+			return singlePartUpload{}, err
 		}
 	} else {
 		identity, err := hashFile(inFilename, chunkSize)
 		if err == nil {
-			return SinglePartUpload{
+			return singlePartUpload{
 				Filename:        inFilename,
 				Sha256:          identity.Sha256,
 				Size:            identity.Size,
@@ -330,78 +382,49 @@ func NewSinglePartUploadWithDetails(inFilename, outFilename string, gzip bool) (
 				ContentEncoding: "identity",
 			}, nil
 		} else {
-			return SinglePartUpload{}, err
+			return singlePartUpload{}, err
 		}
 	}
 }
 
-// Prepare a new gzip-encoded single part upload using a temporary file in the
-// same directory as the current process
-//
-// NOTE: This process creates a file, which is in the return value's Filename
-// property for which cleanup is the responsibility of the caller of this
-// function
-func NewGzipSinglePartUpload(filename string) (SinglePartUpload, error) {
-	// TODO: Make the output filename a parameter and update tests to match that
-	return NewSinglePartUploadWithDetails(filename, filename+".gz", true)
-}
 
-// Prepare a new identity-encoded (e.g. no encoding) single part upload.  This does not
-// create any temporary files
-func NewSinglePartUpload(filename string) (SinglePartUpload, error) {
-	return NewSinglePartUploadWithDetails(filename, filename, false)
-}
+// Prepare a multi part upload with or without gzip encoding.  If gzip encoding
+// is used, the `outFilename` parameter is the file path where the intermediate
+// gzip-encoded file is stored.  Any file at this path will be truncated.  It
+// is the responsibility of the caller to remove this file after they have
+// uploaded the file.  The `chunkSize` parameter is the maximum number of bytes
+// that should be read from the `inFilename` file in each read attempt.  The
+// `chunksInPart` parameter is the maximum number of `chunkSize` chunks in each
+// part.  Note that the partsize is `chunkSize * chunksInPart`
+func NewMultiPartUpload(inFilename, outFilename string, chunkSize, chunksInPart int, gzip bool) (multiPartUpload, error) {
 
-type MultiPartUpload struct {
-	Filename        string
-	Sha256          []byte
-	Size            int64
-	TransferSha256  []byte
-	TransferSize    int64
-	ContentEncoding string
-	Parts           []Part
-}
-
-func (u MultiPartUpload) String() string {
-	var partsStrings []string
-	for _, part := range u.Parts {
-		partsStrings = append(partsStrings, part.String())
-	}
-	partsString := strings.Join(partsStrings, "}, {")
-	return fmt.Sprintf("Multi-part File Upload Filename: %s, Sha256: %x, Size: %d, TransferSha256: %x, TransferSize: %d, ContentEncoding: %s, Parts: [{%s}]",
-		u.Filename, u.Sha256, u.Size, u.TransferSha256, u.TransferSize, u.ContentEncoding, partsString)
-}
-
-// Prepare a single part file upload with a scratch file for gzip encoding if requested
-// Cleaning up the scratch file is the responsibility of the caller
-func NewMultiPartUploadWithDetails(inFilename, outFilename string, gzip bool) (MultiPartUpload, error) {
-
-	chunkSize := 1024 * 128     // 128KB
-	partSize := 1024 * 1024 * 5 // 5MB Chunks
+	partSize := chunkSize * chunksInPart
 
 	if partSize < 1024*1024*5 {
 		err := fmt.Errorf("Partsize must be at least 5 MB, not %d", partSize)
-		return MultiPartUpload{}, err
+		return multiPartUpload{}, err
 	}
 
-	chunksInPart := partSize / chunkSize
-
 	if gzip {
+    if outFilename == "" {
+      err := fmt.Errorf("When using gzip encoding, an outFilename value must be provided")
+      return multiPartUpload{}, err
+    }
 		gzipped, err := gzipAndHashFile(inFilename, outFilename, chunkSize)
 		if err != nil {
-			return MultiPartUpload{}, err
+			return multiPartUpload{}, err
 		}
 		hashedParts, err := hashFileParts(outFilename, chunkSize, chunksInPart)
 		if err != nil {
-			return MultiPartUpload{}, err
+			return multiPartUpload{}, err
 		}
 		// We want to make sure that the same file which we compressed is the file
 		// that we broke into parts and hashed the parts
 		if !bytes.Equal(hashedParts.Sha256, gzipped.TransferSha256) {
 			err := fmt.Errorf("File changed between compression and hashing of parts")
-			return MultiPartUpload{}, err
+			return multiPartUpload{}, err
 		}
-		return MultiPartUpload{
+		return multiPartUpload{
 			Filename:        outFilename,
 			Sha256:          gzipped.Sha256,
 			Size:            gzipped.Size,
@@ -413,9 +436,9 @@ func NewMultiPartUploadWithDetails(inFilename, outFilename string, gzip bool) (M
 	} else {
 		hashedParts, err := hashFileParts(inFilename, chunkSize, chunksInPart)
 		if err != nil {
-			return MultiPartUpload{}, err
+			return multiPartUpload{}, err
 		}
-		return MultiPartUpload{
+		return multiPartUpload{
 			Filename:        outFilename,
 			Sha256:          hashedParts.Sha256,
 			Size:            hashedParts.Size,
@@ -427,19 +450,3 @@ func NewMultiPartUploadWithDetails(inFilename, outFilename string, gzip bool) (M
 	}
 }
 
-// Prepare a new gzip-encoded multi part upload using a temporary file in the
-// same directory as the current process
-//
-// NOTE: This process creates a file, which is in the return value's Filename
-// property for which cleanup is the responsibility of the caller of this
-// function
-func NewGzipMultiPartUpload(filename string) (MultiPartUpload, error) {
-	// TODO: Make the output filename a parameter and update tests to match that
-	return NewMultiPartUploadWithDetails(filename, filename+".gz", true)
-}
-
-// Prepare a new identity-encoded (e.g. no encoding) multi part upload.  This does not
-// create any temporary files
-func NewMultiPartUpload(filename string) (MultiPartUpload, error) {
-	return NewMultiPartUploadWithDetails(filename, filename, false)
-}
