@@ -100,6 +100,7 @@ func testSPUpload(upload SinglePartUpload) error {
 
 func TestUploadPreperation(t *testing.T) {
   filename := "_test.dat"
+
   // We want to do a little bit of setup before running the tests
   if _, err := os.Stat(filename); os.IsNotExist(err) {
     of, err := os.Create(filename);

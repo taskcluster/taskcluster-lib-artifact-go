@@ -179,7 +179,7 @@ type Part struct {
 }
 
 func (u Part) String() string {
-	return fmt.Sprintf("Sha256: %x, Size: %d, Start: %d", u.Sha256, u.Size, u.Start)
+	return fmt.Sprintf("Sha256: %x, Start: %d, Size: %d", u.Sha256, u.Start, u.Size)
 }
 
 type multiPartFileInfo struct {
@@ -231,7 +231,6 @@ func hashFileParts(filename string, chunkSize, chunksInPart int) (multiPartFileI
 	for {
 		nBytes, err := f.Read(buf)
 		if nBytes == 0 {
-			parts[totalParts-1] = Part{partHash.Sum(nil), currentPartSize, int64(totalParts-1) * partSize}
 			break
 		}
 		if err != nil {
