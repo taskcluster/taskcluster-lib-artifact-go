@@ -2,20 +2,20 @@ package prepare
 
 import (
 	"bytes"
+	"crypto/rand"
 	"crypto/sha256"
 	"fmt"
+	"github.com/taskcluster/taskcluster-lib-artifact-go/runner"
 	"os"
-  "testing"
-  "github.com/taskcluster/taskcluster-lib-artifact-go/runner"
-  "crypto/rand"
+	"testing"
 )
 
 func testMPUpload(upload MultiPartUpload) error {
 	of, err := os.Create("_output.dat")
 	if err != nil {
-    return err
+		return err
 	}
-  defer of.Close()
+	defer of.Close()
 
 	overallHash := sha256.New()
 	hash := sha256.New()
@@ -30,14 +30,14 @@ func testMPUpload(upload MultiPartUpload) error {
 
 		body, err := runner.NewBody(upload.Filename, part.Start, part.Size)
 		if err != nil {
-      return err
+			return err
 		}
 		defer body.Close()
-    body.Print()
+		body.Print()
 
 		nBytes, err := body.Read(buf)
 		if err != nil {
-      return err
+			return err
 		}
 
 		hash.Write(buf[:nBytes])
@@ -61,13 +61,13 @@ func testMPUpload(upload MultiPartUpload) error {
 		return fmt.Errorf("Size mismatch: %s != %s\n", totalBytes, upload.TransferSize)
 	}
 
-  return nil
+	return nil
 }
 
 func testSPUpload(upload SinglePartUpload) error {
 	of, err := os.Create("_output.dat")
 	if err != nil {
-    return err
+		return err
 	}
 
 	hash := sha256.New()
@@ -76,13 +76,13 @@ func testSPUpload(upload SinglePartUpload) error {
 
 	body, err := runner.NewBody(upload.Filename, 0, upload.TransferSize)
 	if err != nil {
-    return err
+		return err
 	}
 	defer body.Close()
 
 	nBytes, err := body.Read(buf)
 	if err != nil {
-    return err
+		return err
 	}
 
 	hash.Write(buf[:nBytes])
@@ -95,80 +95,80 @@ func testSPUpload(upload SinglePartUpload) error {
 		return fmt.Errorf("Size mismatch: %s != %s\n", nBytes, upload.TransferSize)
 	}
 
-  return nil
+	return nil
 }
 
 func TestUploadPreperation(t *testing.T) {
-  filename := "_test.dat"
+	filename := "_test.dat"
 
-  // We want to do a little bit of setup before running the tests
-  if _, err := os.Stat(filename); os.IsNotExist(err) {
-    of, err := os.Create(filename);
-    if err != nil {
-      t.Error(err)
-    }
-    for i := 0; i < 10 * 1024; i++ {
-      c := 1024
-      b := make([]byte, c)
-      _, err := rand.Read(b)
-      if err != nil {
-        t.Error(err)
-      }
-      of.Write(b)
-    }
-    of.Close()
-  }
-  
-  t.Run("multipart gzip", func(t *testing.T) {
-    upload, err := NewGzipMultiPartUpload(filename)
-    if err != nil {
-      t.Error(err)
-    }
-    t.Log(upload.String())
-    err = testMPUpload(upload)
-    if err != nil {
-      t.Error(err)
-    }
-    t.Log("Completed")
-  })
+	// We want to do a little bit of setup before running the tests
+	if _, err := os.Stat(filename); os.IsNotExist(err) {
+		of, err := os.Create(filename)
+		if err != nil {
+			t.Error(err)
+		}
+		for i := 0; i < 10*1024; i++ {
+			c := 1024
+			b := make([]byte, c)
+			_, err := rand.Read(b)
+			if err != nil {
+				t.Error(err)
+			}
+			of.Write(b)
+		}
+		of.Close()
+	}
 
-  t.Run("multipart identity", func(t *testing.T) {
-    upload, err := NewMultiPartUpload(filename)
-    if err != nil {
-      t.Error(err)
-    }
-    t.Log(upload.String())
-    err = testMPUpload(upload)
-    if err != nil {
-      t.Error(err)
-    }
-    t.Log("Completed")
-  })
+	t.Run("multipart gzip", func(t *testing.T) {
+		upload, err := NewGzipMultiPartUpload(filename)
+		if err != nil {
+			t.Error(err)
+		}
+		t.Log(upload.String())
+		err = testMPUpload(upload)
+		if err != nil {
+			t.Error(err)
+		}
+		t.Log("Completed")
+	})
 
-  t.Run("singlepart gzip", func(t *testing.T) {
-    upload, err := NewGzipSinglePartUpload(filename)
-    if err != nil {
-      t.Error(err)
-    }
-    err = testSPUpload(upload)
-    if err != nil {
-      t.Error(err)
-    }
-    t.Log("Completed")
-  })
+	t.Run("multipart identity", func(t *testing.T) {
+		upload, err := NewMultiPartUpload(filename)
+		if err != nil {
+			t.Error(err)
+		}
+		t.Log(upload.String())
+		err = testMPUpload(upload)
+		if err != nil {
+			t.Error(err)
+		}
+		t.Log("Completed")
+	})
 
-  t.Run("singlepart identity", func(t *testing.T) {
-    upload, err := NewSinglePartUpload(filename)
-    if err != nil {
-      t.Error(err)
-    }
-    err = testSPUpload(upload)
-    if err != nil {
-      t.Error(err)
-    }
-    t.Log("Completed")
-  })
+	t.Run("singlepart gzip", func(t *testing.T) {
+		upload, err := NewGzipSinglePartUpload(filename)
+		if err != nil {
+			t.Error(err)
+		}
+		err = testSPUpload(upload)
+		if err != nil {
+			t.Error(err)
+		}
+		t.Log("Completed")
+	})
 
-  // Now let's run the tests
-  // ...
+	t.Run("singlepart identity", func(t *testing.T) {
+		upload, err := NewSinglePartUpload(filename)
+		if err != nil {
+			t.Error(err)
+		}
+		err = testSPUpload(upload)
+		if err != nil {
+			t.Error(err)
+		}
+		t.Log("Completed")
+	})
+
+	// Now let's run the tests
+	// ...
 }

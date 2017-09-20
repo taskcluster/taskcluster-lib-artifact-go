@@ -9,8 +9,8 @@ import (
 	"io/ioutil"
 	"math"
 	"os"
+	"strings"
 	"time"
-  "strings"
 )
 
 type singlePartFileInfo struct {
@@ -23,14 +23,14 @@ func hashFile(filename string, chunkSize int) (singlePartFileInfo, error) {
 	// Create a file handle
 	f, err := os.Open(filename)
 	if err != nil {
-    return singlePartFileInfo{}, err
+		return singlePartFileInfo{}, err
 	}
 	defer f.Close()
 
 	// Determine the filesize
 	fi, err := f.Stat()
 	if err != nil {
-    return singlePartFileInfo{}, err
+		return singlePartFileInfo{}, err
 	}
 	size := fi.Size()
 
@@ -49,7 +49,7 @@ func hashFile(filename string, chunkSize int) (singlePartFileInfo, error) {
 			break
 		}
 		if err != nil {
-      return singlePartFileInfo{}, err
+			return singlePartFileInfo{}, err
 		}
 
 		// NOTE: Per docs, this function never returns an error
@@ -69,7 +69,7 @@ func hashFile(filename string, chunkSize int) (singlePartFileInfo, error) {
 			return singlePartFileInfo{}, fmt.Errorf("File size changed during hashing from %d to %d", size, fi.Size())
 		}
 	} else {
-    return singlePartFileInfo{}, err
+		return singlePartFileInfo{}, err
 	}
 
 	return singlePartFileInfo{hash.Sum(nil), totalBytes}, nil
@@ -131,11 +131,11 @@ func gzipAndHashFile(inFilename, outFilename string, chunkSize int) (compressedS
 			break
 		}
 		if err != nil {
-		  return compressedSinglePartFileInfo{}, err
+			return compressedSinglePartFileInfo{}, err
 		}
 
 		if _, err := output.Write(buf[:nBytes]); err != nil {
-		  return compressedSinglePartFileInfo{}, err
+			return compressedSinglePartFileInfo{}, err
 		}
 
 		// Even though nBytes is quite small compared to an int64, we must cast it
@@ -146,13 +146,13 @@ func gzipAndHashFile(inFilename, outFilename string, chunkSize int) (compressedS
 	}
 
 	if totalBytes != size {
-    err := fmt.Errorf("File size changed during hashing from %d to %d", size, totalBytes)
+		err := fmt.Errorf("File size changed during hashing from %d to %d", size, totalBytes)
 		return compressedSinglePartFileInfo{}, err
 	}
 	if fi, err := f.Stat(); err == nil {
 		if size != fi.Size() {
-      err := fmt.Errorf("File size changed during hashing from %d to %d", size, fi.Size())
-		  return compressedSinglePartFileInfo{}, err
+			err := fmt.Errorf("File size changed during hashing from %d to %d", size, fi.Size())
+			return compressedSinglePartFileInfo{}, err
 		}
 	} else {
 		return compressedSinglePartFileInfo{}, err
@@ -195,14 +195,14 @@ func hashFileParts(filename string, chunkSize, chunksInPart int) (multiPartFileI
 	// Create a file handle
 	f, err := os.Open(filename)
 	if err != nil {
-    return multiPartFileInfo{}, err
+		return multiPartFileInfo{}, err
 	}
 	defer f.Close()
 
 	// Determine the filesize
 	fi, err := f.Stat()
 	if err != nil {
-    return multiPartFileInfo{}, err
+		return multiPartFileInfo{}, err
 	}
 	size := fi.Size()
 
@@ -218,23 +218,32 @@ func hashFileParts(filename string, chunkSize, chunksInPart int) (multiPartFileI
 
 	// We need to keep track of which part we're currently working in
 	currentPart := 0
-	// We need to keep track of which chunk we're working on in the current chunk
+
+	// We need to keep track of which chunk we're working on in the current part
 	currentPartChunk := 0
+
 	// We need to know the size of the current part we're working on, mainly
 	// for the last part so we determine the correct size
 	var currentPartSize int64 = 0
 
+	// We need to know the theoretically maximum partSize
 	partSize := int64(chunkSize * chunksInPart)
 	totalParts := int(math.Ceil(float64(size) / float64(partSize)))
+	fmt.Printf("size: %d partSize: %d totalParts: %d\n", size, partSize, totalParts)
+	// TODO the +1 is a bug
 	parts := make([]Part, totalParts)
 
 	for {
 		nBytes, err := f.Read(buf)
 		if nBytes == 0 {
+			if currentPartSize > 0 {
+				parts[currentPart] = Part{partHash.Sum(nil), currentPartSize, int64(currentPart) * partSize}
+			}
 			break
 		}
+
 		if err != nil {
-      return multiPartFileInfo{}, err
+			return multiPartFileInfo{}, err
 		}
 
 		// NOTE: Per docs, this function never returns an error
@@ -247,25 +256,30 @@ func hashFileParts(filename string, chunkSize, chunksInPart int) (multiPartFileI
 		totalBytes += int64(nBytes)
 		currentPartSize += int64(nBytes)
 
+		// Since we read data, the file continues to be read, so let's figure out
+		// if we're in the last chunk of the part
 		if currentPartChunk == (chunksInPart - 1) {
+			// If we're in the last chunk, we should set the part information
 			parts[currentPart] = Part{partHash.Sum(nil), currentPartSize, int64(currentPart) * partSize}
 			partHash.Reset()
 			currentPartChunk = 0
 			currentPart++
 			currentPartSize = 0
 		} else {
+			// If we're not in the last chunk, we'll simply move on to the next until
+			// we are or run out of input
 			currentPartChunk++
 		}
 	}
 
 	if totalBytes != size {
-    err := fmt.Errorf("File size changed during hashing from %d to %d", size, totalBytes)
+		err := fmt.Errorf("File size changed during hashing from %d to %d", size, totalBytes)
 		return multiPartFileInfo{}, err
 	}
 	if fi, err := f.Stat(); err == nil {
 		if size != fi.Size() {
-      err := fmt.Errorf("File size changed during hashing from %d to %d", size, fi.Size())
-		  return multiPartFileInfo{}, err
+			err := fmt.Errorf("File size changed during hashing from %d to %d", size, fi.Size())
+			return multiPartFileInfo{}, err
 		}
 	} else {
 		return multiPartFileInfo{}, err
@@ -294,32 +308,32 @@ func NewSinglePartUploadWithDetails(inFilename, outFilename string, gzip bool) (
 	chunkSize := 1024 * 128 // 128KB
 	if gzip {
 		gzipped, err := gzipAndHashFile(inFilename, outFilename, chunkSize)
-    if err == nil {
-      return SinglePartUpload{
-        Filename:        outFilename,
-        Sha256:          gzipped.Sha256,
-        Size:            gzipped.Size,
-        TransferSha256:  gzipped.TransferSha256,
-        TransferSize:    gzipped.TransferSize,
-        ContentEncoding: gzipped.ContentEncoding,
-      }, nil
-    } else {
-      return SinglePartUpload{}, err
-    }
+		if err == nil {
+			return SinglePartUpload{
+				Filename:        outFilename,
+				Sha256:          gzipped.Sha256,
+				Size:            gzipped.Size,
+				TransferSha256:  gzipped.TransferSha256,
+				TransferSize:    gzipped.TransferSize,
+				ContentEncoding: gzipped.ContentEncoding,
+			}, nil
+		} else {
+			return SinglePartUpload{}, err
+		}
 	} else {
 		identity, err := hashFile(inFilename, chunkSize)
-    if err == nil {
-      return SinglePartUpload{
-        Filename:        inFilename,
-        Sha256:          identity.Sha256,
-        Size:            identity.Size,
-        TransferSha256:  identity.Sha256,
-        TransferSize:    identity.Size,
-        ContentEncoding: "identity",
-      }, nil
-    } else {
-      return SinglePartUpload{}, err
-    }
+		if err == nil {
+			return SinglePartUpload{
+				Filename:        inFilename,
+				Sha256:          identity.Sha256,
+				Size:            identity.Size,
+				TransferSha256:  identity.Sha256,
+				TransferSize:    identity.Size,
+				ContentEncoding: "identity",
+			}, nil
+		} else {
+			return SinglePartUpload{}, err
+		}
 	}
 }
 
@@ -330,8 +344,8 @@ func NewSinglePartUploadWithDetails(inFilename, outFilename string, gzip bool) (
 // property for which cleanup is the responsibility of the caller of this
 // function
 func NewGzipSinglePartUpload(filename string) (SinglePartUpload, error) {
-  // TODO: Make the output filename a parameter and update tests to match that
-	return NewSinglePartUploadWithDetails(filename, filename + ".gz", true)
+	// TODO: Make the output filename a parameter and update tests to match that
+	return NewSinglePartUploadWithDetails(filename, filename+".gz", true)
 }
 
 // Prepare a new identity-encoded (e.g. no encoding) single part upload.  This does not
@@ -351,11 +365,11 @@ type MultiPartUpload struct {
 }
 
 func (u MultiPartUpload) String() string {
-  var partsStrings []string
-  for _, part := range u.Parts {
-    partsStrings = append(partsStrings, part.String())
-  }
-  partsString := strings.Join(partsStrings, "}, {")
+	var partsStrings []string
+	for _, part := range u.Parts {
+		partsStrings = append(partsStrings, part.String())
+	}
+	partsString := strings.Join(partsStrings, "}, {")
 	return fmt.Sprintf("Multi-part File Upload Filename: %s, Sha256: %x, Size: %d, TransferSha256: %x, TransferSize: %d, ContentEncoding: %s, Parts: [{%s}]",
 		u.Filename, u.Sha256, u.Size, u.TransferSha256, u.TransferSize, u.ContentEncoding, partsString)
 }
@@ -368,26 +382,26 @@ func NewMultiPartUploadWithDetails(inFilename, outFilename string, gzip bool) (M
 	partSize := 1024 * 1024 * 5 // 5MB Chunks
 
 	if partSize < 1024*1024*5 {
-	  err := fmt.Errorf("Partsize must be at least 5 MB, not %d", partSize)
-    return MultiPartUpload{}, err
+		err := fmt.Errorf("Partsize must be at least 5 MB, not %d", partSize)
+		return MultiPartUpload{}, err
 	}
 
 	chunksInPart := partSize / chunkSize
 
 	if gzip {
 		gzipped, err := gzipAndHashFile(inFilename, outFilename, chunkSize)
-    if err != nil {
-      return MultiPartUpload{}, err
-    }
+		if err != nil {
+			return MultiPartUpload{}, err
+		}
 		hashedParts, err := hashFileParts(outFilename, chunkSize, chunksInPart)
-    if err != nil {
-      return MultiPartUpload{}, err
-    }
+		if err != nil {
+			return MultiPartUpload{}, err
+		}
 		// We want to make sure that the same file which we compressed is the file
 		// that we broke into parts and hashed the parts
 		if !bytes.Equal(hashedParts.Sha256, gzipped.TransferSha256) {
-      err := fmt.Errorf("File changed between compression and hashing of parts")
-      return MultiPartUpload{}, err
+			err := fmt.Errorf("File changed between compression and hashing of parts")
+			return MultiPartUpload{}, err
 		}
 		return MultiPartUpload{
 			Filename:        outFilename,
@@ -400,9 +414,9 @@ func NewMultiPartUploadWithDetails(inFilename, outFilename string, gzip bool) (M
 		}, nil
 	} else {
 		hashedParts, err := hashFileParts(inFilename, chunkSize, chunksInPart)
-    if err != nil {
-      return MultiPartUpload{}, err
-    }
+		if err != nil {
+			return MultiPartUpload{}, err
+		}
 		return MultiPartUpload{
 			Filename:        outFilename,
 			Sha256:          hashedParts.Sha256,
@@ -424,18 +438,18 @@ func NewMultiPartUploadWithDetails(inFilename, outFilename string, gzip bool) (M
 func NewGzipMultiPartUpload(filename string) (MultiPartUpload, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
-    return MultiPartUpload{}, err
+		return MultiPartUpload{}, err
 	}
 
 	tmpfile, err := ioutil.TempFile(cwd, filename+".gz_")
 	if err != nil {
-    return MultiPartUpload{}, err
+		return MultiPartUpload{}, err
 	}
 
 	// We immediately close the file because we're only using it to create the
 	// name
 	if err := tmpfile.Close(); err != nil {
-    return MultiPartUpload{}, err
+		return MultiPartUpload{}, err
 	}
 
 	return NewMultiPartUploadWithDetails(filename, tmpfile.Name(), true)
