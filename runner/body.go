@@ -1,10 +1,10 @@
 package runner
 
 import (
-	"fmt"
 	"io"
 	"os"
-	"strings"
+  "fmt"
+  "errors"
 )
 
 type Body struct {
@@ -14,17 +14,22 @@ type Body struct {
 	Size   int64
 }
 
-// Create a body
+// Create a body.  A body is an io.Reader instance which reads from the file at
+// filename, starting at the `offset`th byte and reading up to `size` bytes in
+// total. 
 func NewBody(filename string, offset, size int64) (*Body, error) {
+  if size == 0 {
+    return nil, errors.New("Cannot specify a size of 0")
+  }
+
 	file, err := os.Open(filename)
 
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	newBody := Body{file, nil, offset, size}
 
-	// Rather than implementing this again
 	newBody.Reset()
 
 	return &newBody, nil
@@ -32,7 +37,7 @@ func NewBody(filename string, offset, size int64) (*Body, error) {
 
 func (b *Body) Reset() error {
 	if _, err := b.File.Seek(b.Offset, 0); err != nil {
-		panic(err)
+		return err
 	}
 
 	b.Reader = io.LimitReader(b.File, b.Size)
@@ -45,11 +50,15 @@ func (b Body) Read(p []byte) (int, error) {
 
 func (b *Body) Close() error {
 	if err := b.File.Close(); err != nil {
-		panic(err)
+    return err
 	}
 
 	b.File = nil
 	b.Reader = nil
 
 	return nil
+}
+
+func (b Body) Print() {
+  fmt.Printf("filename: %s offset: %d size: %d\n", b.File.Name(), b.Offset, b.Size)
 }

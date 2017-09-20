@@ -10,6 +10,7 @@ import (
 	"math"
 	"os"
 	"time"
+  "strings"
 )
 
 type singlePartFileInfo struct {
@@ -318,11 +319,14 @@ func NewSinglePartUploadWithDetails(inFilename, outFilename string, gzip bool) S
 // property for which cleanup is the responsibility of the caller of this
 // function
 func NewGzipSinglePartUpload(filename string) SinglePartUpload {
+  /*
+  // TODO, maybe it would be better instead of doing this, to allow passing
 	cwd, err := os.Getwd()
 	if err != nil {
 		panic(err)
 	}
 
+  // in the scratch file name.
 	tmpfile, err := ioutil.TempFile(cwd, filename+".gz_")
 	if err != nil {
 		panic(err)
@@ -335,6 +339,9 @@ func NewGzipSinglePartUpload(filename string) SinglePartUpload {
 	}
 
 	return NewSinglePartUploadWithDetails(filename, tmpfile.Name(), true)
+  */
+	return NewSinglePartUploadWithDetails(filename, filename + ".gz", true)
+
 }
 
 // Prepare a new identity-encoded (e.g. no encoding) single part upload.  This does not
@@ -354,8 +361,13 @@ type MultiPartUpload struct {
 }
 
 func (u MultiPartUpload) String() string {
-	return fmt.Sprintf("Multi-part File Upload Filename: %s, Sha256: %x, Size: %d, TransferSha256: %x, TransferSize: %d, ContentEncoding: %s, #Parts: %d",
-		u.Filename, u.Sha256, u.Size, u.TransferSha256, u.TransferSize, u.ContentEncoding, len(u.Parts))
+  var partsStrings []string
+  for _, part := range u.Parts {
+    partsStrings = append(partsStrings, part.String())
+  }
+  partsString := strings.Join(partsStrings, "}, {")
+	return fmt.Sprintf("Multi-part File Upload Filename: %s, Sha256: %x, Size: %d, TransferSha256: %x, TransferSize: %d, ContentEncoding: %s, Parts: [{%s}]",
+		u.Filename, u.Sha256, u.Size, u.TransferSha256, u.TransferSize, u.ContentEncoding, partsString)
 }
 
 // Prepare a single part file upload with a scratch file for gzip encoding if requested
