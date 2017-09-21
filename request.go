@@ -24,17 +24,17 @@ func (c byteCountingWriter) Write(p []byte) (n int, err error) {
 }
 
 // The request type contains the information needed to run an HTTP method
-type Request struct {
+type request struct {
 	Url     string
 	Method  string
 	Headers http.Header
 }
 
-func NewRequest(url, method string, headers http.Header) Request {
-	return Request{url, method, headers}
+func newRequest(url, method string, headers http.Header) request {
+	return request{url, method, headers}
 }
 
-func NewRequestFromStringMap(url, method string, headers map[string]string) Request {
+func newRequestFromStringMap(url, method string, headers map[string]string) request {
 	httpHeaders := make(http.Header)
 	for k, v := range headers {
 		if httpHeaders.Get(k) == "" {
@@ -43,14 +43,14 @@ func NewRequestFromStringMap(url, method string, headers map[string]string) Requ
 			panic(fmt.Errorf("Header key %s already exists", k))
 		}
 	}
-	return Request{url, method, httpHeaders}
+	return request{url, method, httpHeaders}
 }
 
-func (r Request) String() string {
+func (r request) String() string {
 	return fmt.Sprintf("%s %s %+v", strings.ToUpper(r.Method), r.Url, r.Headers)
 }
 
-type Runner struct {
+type runner struct {
 	transport *http.Transport
 	client    *http.Client
 }
@@ -64,9 +64,9 @@ func checkRedirect(req *http.Request, via []*http.Request) error {
 	return http.ErrUseLastResponse
 }
 
-// Create and return a new Runner with the Transport and Clients already set up
+// Create and return a new runner with the Transport and Clients already set up
 // for use
-func NewRunner() Runner {
+func newRunner() runner {
 	transport := &http.Transport{
 		MaxIdleConns:       10,
 		IdleConnTimeout:    30 * time.Second,
@@ -76,12 +76,12 @@ func NewRunner() Runner {
 		Transport:     transport,
 		CheckRedirect: checkRedirect,
 	}
-	return Runner{transport, client}
+	return runner{transport, client}
 }
 
 // TODO: Create accessor methods for the client and transport
 
-func (r Runner) RunWithDetails(request Request, body Body, chunkSize int, outputFile string) error {
+func (r runner) RunWithDetails(request request, body body, chunkSize int, outputFile string) error {
 
 	httpRequest, err := http.NewRequest(request.Method, request.Url, body)
 	if err != nil {

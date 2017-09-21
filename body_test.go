@@ -22,7 +22,7 @@ func TestBodyReading(t *testing.T) {
 	}
 	_file.Close()
 
-  filename2 := "_one-byte.dat"
+  filename2 := "test-files/select-single-byte"
   _file, _err = os.Create(filename2)
   if _err != nil {
     t.Error(_err)
@@ -32,14 +32,14 @@ func TestBodyReading(t *testing.T) {
   _file.Close()
 
 	t.Run("should return error if file doesn't exist", func(t *testing.T) {
-		_, err := NewBody("file", 128, 128)
+		_, err := newBody("file", 128, 128)
 		if !os.IsNotExist(err) {
 			t.Error(err)
 		}
 	})
 
 	t.Run("should return error if size is zero", func(t *testing.T) {
-		_, err := NewBody(filename, 128, 0)
+		_, err := newBody(filename, 128, 0)
 		if os.IsNotExist(err) {
 			t.Error(err)
 		} else if err == nil {
@@ -49,7 +49,7 @@ func TestBodyReading(t *testing.T) {
 	})
 
 	t.Run("should read a complete 2048 byte file", func(t *testing.T) {
-		body, err := NewBody(filename, 0, 2048)
+		body, err := newBody(filename, 0, 2048)
 		if err != nil {
 			t.Error(err)
 		}
@@ -72,7 +72,7 @@ func TestBodyReading(t *testing.T) {
 	})
 
 	t.Run("should read first 1024 bytes of a 2048 byte file", func(t *testing.T) {
-		body, err := NewBody(filename, 0, 1024)
+		body, err := newBody(filename, 0, 1024)
 		if err != nil {
 			t.Error(err)
 		}
@@ -95,7 +95,7 @@ func TestBodyReading(t *testing.T) {
 	})
 
 	t.Run("should read second 1024 bytes of a 2048 byte file", func(t *testing.T) {
-		body, err := NewBody(filename, 1024, 1024)
+		body, err := newBody(filename, 1024, 1024)
 		if err != nil {
 			t.Error(err)
 		}
@@ -118,7 +118,7 @@ func TestBodyReading(t *testing.T) {
 	})
 
 	t.Run("should read middle 1024 bytes of a 2048 byte file", func(t *testing.T) {
-		body, err := NewBody(filename, 512, 1024)
+		body, err := newBody(filename, 512, 1024)
 		if err != nil {
 			t.Error(err)
 		}
@@ -145,7 +145,7 @@ func TestBodyReading(t *testing.T) {
 		// more than a single byte if things go wrong.
 		buf := make([]byte, 2)
 
-		body, err := NewBody(filename2, 3, 1)
+		body, err := newBody(filename2, 3, 1)
 		defer body.Close()
 		if err != nil {
 			t.Error(err)

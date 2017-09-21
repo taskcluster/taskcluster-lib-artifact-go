@@ -7,7 +7,7 @@ import (
 	"os"
 )
 
-type Body struct {
+type body struct {
 	File   *os.File
 	Reader io.Reader
 	Offset int64
@@ -17,7 +17,7 @@ type Body struct {
 // Create a body.  A body is an io.Reader instance which reads from the file at
 // filename, starting at the `offset`th byte and reading up to `size` bytes in
 // total.
-func NewBody(filename string, offset, size int64) (*Body, error) {
+func newBody(filename string, offset, size int64) (*body, error) {
 	if size == 0 {
 		return nil, errors.New("Cannot specify a size of 0")
 	}
@@ -28,14 +28,14 @@ func NewBody(filename string, offset, size int64) (*Body, error) {
 		return nil, err
 	}
 
-	newBody := Body{file, nil, offset, size}
+	b := body{file, nil, offset, size}
 
-	newBody.Reset()
+	b.Reset()
 
-	return &newBody, nil
+	return &b, nil
 }
 
-func (b *Body) Reset() error {
+func (b *body) Reset() error {
 	if _, err := b.File.Seek(b.Offset, 0); err != nil {
 		return err
 	}
@@ -44,11 +44,11 @@ func (b *Body) Reset() error {
 	return nil
 }
 
-func (b Body) Read(p []byte) (int, error) {
+func (b body) Read(p []byte) (int, error) {
 	return b.Reader.Read(p)
 }
 
-func (b *Body) Close() error {
+func (b *body) Close() error {
   if err := b.File.Close(); err != nil {
     return err
   }
@@ -59,6 +59,6 @@ func (b *Body) Close() error {
 	return nil
 }
 
-func (b Body) Print() {
+func (b body) Print() {
 	fmt.Printf("filename: %s offset: %d size: %d\n", b.File.Name(), b.Offset, b.Size)
 }
