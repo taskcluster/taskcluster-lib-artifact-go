@@ -351,7 +351,7 @@ func hashFileParts(filename string, chunkSize, chunksInPart int) (multiPartFileI
 // they have uploaded the file.  The `chunkSize` parameter is the maximum
 // number of bytes that should be read from the `inFilename` file in each read
 // attempt
-func NewSinglePartUpload(inFilename, outFilename string, chunkSize int, gzip bool) (singlePartUpload, error) {
+func newSinglePartUpload(inFilename, outFilename string, chunkSize int, gzip bool) (singlePartUpload, error) {
 	if gzip {
     if outFilename == "" {
       err := fmt.Errorf("When using gzip encoding, an outFilename value must be provided")
@@ -396,7 +396,7 @@ func NewSinglePartUpload(inFilename, outFilename string, chunkSize int, gzip boo
 // that should be read from the `inFilename` file in each read attempt.  The
 // `chunksInPart` parameter is the maximum number of `chunkSize` chunks in each
 // part.  Note that the partsize is `chunkSize * chunksInPart`
-func NewMultiPartUpload(inFilename, outFilename string, chunkSize, chunksInPart int, gzip bool) (multiPartUpload, error) {
+func newMultiPartUpload(inFilename, outFilename string, chunkSize, chunksInPart int, gzip bool) (multiPartUpload, error) {
 
 	partSize := chunkSize * chunksInPart
 
@@ -439,7 +439,7 @@ func NewMultiPartUpload(inFilename, outFilename string, chunkSize, chunksInPart 
 			return multiPartUpload{}, err
 		}
 		return multiPartUpload{
-			Filename:        outFilename,
+			Filename:        inFilename,
 			Sha256:          hashedParts.Sha256,
 			Size:            hashedParts.Size,
 			TransferSha256:  hashedParts.Sha256,
