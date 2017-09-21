@@ -79,11 +79,10 @@ func (u multiPartUpload) String() string {
 	}
 	partsString := strings.Join(partsStrings, "}, {")
 	return fmt.Sprintf(
-    "Multi-part File Upload Filename: %s , Sha256: %x, Size: %d, " +
-    "TransferSha256: %x, TransferSize: %d, ContentEncoding: %s, Parts: [{%s}]",
+		"Multi-part File Upload Filename: %s , Sha256: %x, Size: %d, "+
+			"TransferSha256: %x, TransferSize: %d, ContentEncoding: %s, Parts: [{%s}]",
 		u.Filename, u.Sha256, u.Size, u.TransferSha256, u.TransferSize, u.ContentEncoding, partsString)
 }
-
 
 // Hash a file and count the number of bytes in it in a single pass.  File is
 // streamed and an effort is made to ensure that if the file is modified during
@@ -241,7 +240,6 @@ func gzipAndHashFile(inFilename, outFilename string, chunkSize int) (compressedS
 	return compressedSinglePartFileInfo{hash.Sum(nil), totalBytes, transferHash.Sum(nil), ofi.Size(), "gzip"}, nil
 }
 
-
 // In a single pass, hash a file as well as the parts based on the chunkSize
 // and chunksInPart parameters.  The chunkSize is the.  The `chunkSize`
 // parameter is the maximum number of bytes to read in a single read attempt.
@@ -352,14 +350,14 @@ func hashFileParts(filename string, chunkSize, chunksInPart int) (multiPartFileI
 // number of bytes that should be read from the `inFilename` file in each read
 // attempt
 func newSinglePartUpload(inFilename, outFilename string, chunkSize int, gzip bool) (singlePartUpload, error) {
-  if _, err := os.Stat(inFilename); os.IsNotExist(err) {
-    return singlePartUpload{}, err
-  }
+	if _, err := os.Stat(inFilename); os.IsNotExist(err) {
+		return singlePartUpload{}, err
+	}
 	if gzip {
-    if outFilename == "" {
-      err := fmt.Errorf("When using gzip encoding, an outFilename value must be provided")
-      return singlePartUpload{}, err
-    }
+		if outFilename == "" {
+			err := fmt.Errorf("When using gzip encoding, an outFilename value must be provided")
+			return singlePartUpload{}, err
+		}
 		gzipped, err := gzipAndHashFile(inFilename, outFilename, chunkSize)
 		if err == nil {
 			return singlePartUpload{
@@ -390,7 +388,6 @@ func newSinglePartUpload(inFilename, outFilename string, chunkSize int, gzip boo
 	}
 }
 
-
 // Prepare a multi part upload with or without gzip encoding.  If gzip encoding
 // is used, the `outFilename` parameter is the file path where the intermediate
 // gzip-encoded file is stored.  Any file at this path will be truncated.  It
@@ -409,10 +406,10 @@ func newMultiPartUpload(inFilename, outFilename string, chunkSize, chunksInPart 
 	}
 
 	if gzip {
-    if outFilename == "" {
-      err := fmt.Errorf("When using gzip encoding, an outFilename value must be provided")
-      return multiPartUpload{}, err
-    }
+		if outFilename == "" {
+			err := fmt.Errorf("When using gzip encoding, an outFilename value must be provided")
+			return multiPartUpload{}, err
+		}
 		gzipped, err := gzipAndHashFile(inFilename, outFilename, chunkSize)
 		if err != nil {
 			return multiPartUpload{}, err
@@ -452,4 +449,3 @@ func newMultiPartUpload(inFilename, outFilename string, chunkSize, chunksInPart 
 		}, nil
 	}
 }
-

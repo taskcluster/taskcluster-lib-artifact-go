@@ -49,9 +49,9 @@ func (b body) Read(p []byte) (int, error) {
 }
 
 func (b *body) Close() error {
-  if err := b.File.Close(); err != nil {
-    return err
-  }
+	if err := b.File.Close(); err != nil {
+		return err
+	}
 
 	b.File = nil
 	b.Reader = nil

@@ -34,16 +34,16 @@ func newRequest(url, method string, headers http.Header) request {
 	return request{url, method, headers}
 }
 
-func newRequestFromStringMap(url, method string, headers map[string]string) request {
+func newRequestFromStringMap(url, method string, headers map[string]string) (request, error) {
 	httpHeaders := make(http.Header)
 	for k, v := range headers {
 		if httpHeaders.Get(k) == "" {
 			httpHeaders.Add(k, v)
 		} else {
-			panic(fmt.Errorf("Header key %s already exists", k))
+			return request{}, fmt.Errorf("Header key %s already exists", k)
 		}
 	}
-	return request{url, method, httpHeaders}
+	return request{url, method, httpHeaders}, nil
 }
 
 func (r request) String() string {
@@ -85,14 +85,14 @@ func (r runner) RunWithDetails(request request, body body, chunkSize int, output
 
 	httpRequest, err := http.NewRequest(request.Method, request.Url, body)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	httpRequest.Header = request.Headers
 
 	resp, err := r.client.Do(httpRequest)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	defer resp.Body.Close()
 
@@ -101,11 +101,11 @@ func (r runner) RunWithDetails(request request, body body, chunkSize int, output
 
 	// Figure out what content size we're expecting
 	if cSize := resp.Header.Get("x-amz-meta-content-length"); cSize == "" {
-		panic(fmt.Errorf("Expected Header X-Amz-Meta-Content-Length to have a value"))
+		return fmt.Errorf("Expected Header X-Amz-Meta-Content-Length to have a value")
 	} else {
 		i, err := strconv.ParseInt(cSize, 10, 64)
 		if err != nil {
-			panic(err)
+			return err
 		}
 		expectedSize = i
 	}
@@ -116,7 +116,7 @@ func (r runner) RunWithDetails(request request, body body, chunkSize int, output
 	} else {
 		i, err := strconv.ParseInt(tSize, 10, 64)
 		if err != nil {
-			panic(err)
+			return err
 		}
 		expectedTransferSize = i
 	}
@@ -126,7 +126,7 @@ func (r runner) RunWithDetails(request request, body body, chunkSize int, output
 	expectedTransferSha256 := resp.Header.Get("x-amz-transfer-sha256")
 
 	if expectedSha256 == "" {
-		panic(fmt.Errorf("Expected a content-sha256"))
+		return fmt.Errorf("Expected a content-sha256")
 	}
 
 	if expectedTransferSha256 == "" {
@@ -159,16 +159,16 @@ func (r runner) RunWithDetails(request request, body body, chunkSize int, output
 		fallthrough
 	case "identity":
 		if expectedSha256 != expectedTransferSha256 {
-			panic(fmt.Errorf("Identity encoding requires content and transfer sha256 to be equal"))
+			return fmt.Errorf("Identity encoding requires content and transfer sha256 to be equal")
 		}
 	case "gzip":
 		zr, err := gzip.NewReader(input)
 		if err != nil {
-			panic(err)
+			return err
 		}
 		input = zr
 	default:
-		panic(fmt.Errorf("Unexpected content-encoding: %s", enc))
+		return fmt.Errorf("Unexpected content-encoding: %s", enc)
 	}
 
 	// The output io.Writer is going to be set up as a chain of io.Writers where
@@ -184,7 +184,7 @@ func (r runner) RunWithDetails(request request, body body, chunkSize int, output
 	} else {
 		of, err := os.Create(outputFile)
 		if err != nil {
-			panic(err)
+			return err
 		}
 		defer of.Close()
 		output = io.MultiWriter(of, contentHash)
@@ -202,7 +202,7 @@ func (r runner) RunWithDetails(request request, body body, chunkSize int, output
 			break
 		}
 		if err != nil {
-			panic(err)
+			return err
 		}
 		output.Write(buf[:nBytes])
 	}
@@ -213,11 +213,11 @@ func (r runner) RunWithDetails(request request, body body, chunkSize int, output
 	//transferHash
 
 	if expectedSize != contentBytes {
-		panic(fmt.Errorf("Expected transfer of %d bytes, received %d", expectedSize, contentBytes))
+		return fmt.Errorf("Expected transfer of %d bytes, received %d", expectedSize, contentBytes)
 	}
 
 	if expectedTransferSize != transferBytes {
-		panic(fmt.Errorf("Expected %d bytes of content but have %d", expectedTransferSize, transferBytes))
+		return fmt.Errorf("Expected %d bytes of content but have %d", expectedTransferSize, transferBytes)
 	}
 
 	return nil

@@ -22,14 +22,14 @@ func TestBodyReading(t *testing.T) {
 	}
 	_file.Close()
 
-  filename2 := "test-files/select-single-byte"
-  _file, _err = os.Create(filename2)
-  if _err != nil {
-    t.Error(_err)
-  }
+	filename2 := "test-files/select-single-byte"
+	_file, _err = os.Create(filename2)
+	if _err != nil {
+		t.Error(_err)
+	}
 
-  _file.Write([]byte{0, 1, 2, 3, 4, 5, 6, 7, 8})
-  _file.Close()
+	_file.Write([]byte{0, 1, 2, 3, 4, 5, 6, 7, 8})
+	_file.Close()
 
 	t.Run("should return error if file doesn't exist", func(t *testing.T) {
 		_, err := newBody("file", 128, 128)
