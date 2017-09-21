@@ -352,6 +352,9 @@ func hashFileParts(filename string, chunkSize, chunksInPart int) (multiPartFileI
 // number of bytes that should be read from the `inFilename` file in each read
 // attempt
 func newSinglePartUpload(inFilename, outFilename string, chunkSize int, gzip bool) (singlePartUpload, error) {
+  if _, err := os.Stat(inFilename); os.IsNotExist(err) {
+    return singlePartUpload{}, err
+  }
 	if gzip {
     if outFilename == "" {
       err := fmt.Errorf("When using gzip encoding, an outFilename value must be provided")

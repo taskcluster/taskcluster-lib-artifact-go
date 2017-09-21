@@ -10,12 +10,6 @@ import (
 )
 
 func testMPUpload(t *testing.T, upload multiPartUpload) {
-	of, err := os.Create("_output.dat")
-	if err != nil {
-		t.Error(err)
-	}
-	defer of.Close()
-
 	overallHash := sha256.New()
 	hash := sha256.New()
 
@@ -40,7 +34,6 @@ func testMPUpload(t *testing.T, upload multiPartUpload) {
 
 		hash.Write(buf[:nBytes])
 		overallHash.Write(buf[:nBytes])
-		of.Write(buf[:nBytes])
 
 		totalBytes += int64(nBytes)
 
@@ -61,11 +54,6 @@ func testMPUpload(t *testing.T, upload multiPartUpload) {
 }
 
 func testSPUpload(t *testing.T, upload singlePartUpload) {
-	of, err := os.Create("_output.dat")
-	if err != nil {
-		t.Error(err)
-	}
-
 	hash := sha256.New()
 
 	buf := make([]byte, upload.TransferSize)
@@ -82,7 +70,6 @@ func testSPUpload(t *testing.T, upload singlePartUpload) {
 	}
 
 	hash.Write(buf[:nBytes])
-	of.Write(buf[:nBytes])
 
 	if !bytes.Equal(hash.Sum(nil), upload.TransferSha256) {
 		t.Errorf("Checksum mismatch: %x != %x\n", hash.Sum(nil), upload.TransferSha256)
@@ -93,10 +80,11 @@ func testSPUpload(t *testing.T, upload singlePartUpload) {
 }
 
 func TestUploadPreperation(t *testing.T) {
-	filename := "_test.dat"
+	filename := "test-files/10mb.dat"
 
 	// We want to do a little bit of setup before running the tests
-	if _, err := os.Stat(filename); os.IsNotExist(err) {
+	if fi, err := os.Stat(filename); os.IsNotExist(err) || fi.Size() != 10*1024*1024 {
+    t.Log("input data did not exist or was wrong size, recreating")
 		of, err := os.Create(filename)
 		if err != nil {
 			t.Error(err)
@@ -120,9 +108,7 @@ func TestUploadPreperation(t *testing.T) {
 		if err != nil {
 			t.Error(err)
 		}
-		t.Log(upload.String())
 		testMPUpload(t, upload)
-		t.Log("Completed")
 	})
 
 	t.Run("multipart identity", func(t *testing.T) {
@@ -132,9 +118,7 @@ func TestUploadPreperation(t *testing.T) {
 		if err != nil {
 			t.Error(err)
 		}
-		t.Log(upload.String())
 		testMPUpload(t, upload)
-		t.Log("Completed")
 	})
 
 	t.Run("singlepart gzip", func(t *testing.T) {
@@ -144,7 +128,6 @@ func TestUploadPreperation(t *testing.T) {
 			t.Error(err)
 		}
 		testSPUpload(t, upload)
-		t.Log("Completed")
 	})
 
 	t.Run("singlepart identity", func(t *testing.T) {
@@ -154,7 +137,6 @@ func TestUploadPreperation(t *testing.T) {
 			t.Error(err)
 		}
 		testSPUpload(t, upload)
-		t.Log("Completed")
 	})
 
 	// Now let's run the tests
