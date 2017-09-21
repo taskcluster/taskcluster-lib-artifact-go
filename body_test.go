@@ -1,4 +1,4 @@
-package runner
+package main
 
 import (
 	"bytes"
@@ -9,9 +9,9 @@ import (
 
 var allTheBytes []byte = []byte{1, 3, 7, 15, 31, 63, 127, 255}
 
-func TestUploadPreperation(t *testing.T) {
+func TestBodyReading(t *testing.T) {
 
-	filename := "_scratch.dat"
+	filename := "test-files/body-reading"
 
 	_file, _err := os.Create(filename)
 	if _err != nil {
@@ -21,6 +21,15 @@ func TestUploadPreperation(t *testing.T) {
 		_file.Write(allTheBytes)
 	}
 	_file.Close()
+
+  filename2 := "_one-byte.dat"
+  _file, _err = os.Create(filename2)
+  if _err != nil {
+    t.Error(_err)
+  }
+
+  _file.Write([]byte{0, 1, 2, 3, 4, 5, 6, 7, 8})
+  _file.Close()
 
 	t.Run("should return error if file doesn't exist", func(t *testing.T) {
 		_, err := NewBody("file", 128, 128)
@@ -40,8 +49,6 @@ func TestUploadPreperation(t *testing.T) {
 	})
 
 	t.Run("should read a complete 2048 byte file", func(t *testing.T) {
-		t.Parallel()
-
 		body, err := NewBody(filename, 0, 2048)
 		if err != nil {
 			t.Error(err)
@@ -88,17 +95,6 @@ func TestUploadPreperation(t *testing.T) {
 	})
 
 	t.Run("should read second 1024 bytes of a 2048 byte file", func(t *testing.T) {
-		filename := "_second-1024-of-2048-byte-test.dat"
-		t.Parallel()
-		file, err := os.Create(filename)
-		if err != nil {
-			t.Error(err)
-		}
-		for i := 0; i < 256; i++ {
-			file.Write(allTheBytes)
-		}
-		file.Close()
-
 		body, err := NewBody(filename, 1024, 1024)
 		if err != nil {
 			t.Error(err)
@@ -122,17 +118,6 @@ func TestUploadPreperation(t *testing.T) {
 	})
 
 	t.Run("should read middle 1024 bytes of a 2048 byte file", func(t *testing.T) {
-		filename := "_second-1024-of-2048-byte-test.dat"
-		t.Parallel()
-		file, err := os.Create(filename)
-		if err != nil {
-			t.Error(err)
-		}
-		for i := 0; i < 256; i++ {
-			file.Write(allTheBytes)
-		}
-		file.Close()
-
 		body, err := NewBody(filename, 512, 1024)
 		if err != nil {
 			t.Error(err)
@@ -156,15 +141,6 @@ func TestUploadPreperation(t *testing.T) {
 	})
 
 	t.Run("should read exactly one unique byte", func(t *testing.T) {
-		filename2 := "_one-byte.dat"
-		f, err := os.Create(filename2)
-		defer f.Close()
-		if err != nil {
-			t.Error(err)
-		}
-
-		f.Write([]byte{0, 1, 2, 3, 4, 5, 6, 7, 8})
-
 		// We make this buf 2 so that the io.Reader could theoretically read in
 		// more than a single byte if things go wrong.
 		buf := make([]byte, 2)

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
-	"github.com/taskcluster/taskcluster-lib-artifact-go/runner"
 	"os"
 	"testing"
 )
@@ -21,7 +20,7 @@ func testMPUpload(t *testing.T, upload multiPartUpload) {
 		// Inefficient, but this is but a test, so meh
 		buf := make([]byte, part.Size)
 
-		body, err := runner.NewBody(upload.Filename, part.Start, part.Size)
+		body, err := NewBody(upload.Filename, part.Start, part.Size)
 		if err != nil {
 			t.Error(err)
 		}
@@ -58,7 +57,7 @@ func testSPUpload(t *testing.T, upload singlePartUpload) {
 
 	buf := make([]byte, upload.TransferSize)
 
-	body, err := runner.NewBody(upload.Filename, 0, upload.TransferSize)
+	body, err := NewBody(upload.Filename, 0, upload.TransferSize)
 	if err != nil {
     t.Error(err)
 	}
