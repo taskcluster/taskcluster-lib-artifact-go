@@ -115,7 +115,7 @@ func hashFile(filename string, chunkSize int) (singlePartFileInfo, error) {
 
 	for {
 		nBytes, err := f.Read(buf)
-		if nBytes == 0 {
+		if nBytes == 0 || err == io.EOF {
 			break
 		}
 		if err != nil {

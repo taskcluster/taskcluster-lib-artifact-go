@@ -27,10 +27,10 @@ func (c byteCountingWriter) Write(p []byte) (n int, err error) {
 type request struct {
 	Url     string
 	Method  string
-	Headers http.Header
+	Headers *http.Header
 }
 
-func newRequest(url, method string, headers http.Header) request {
+func newRequest(url, method string, headers *http.Header) request {
 	return request{url, method, headers}
 }
 
@@ -38,12 +38,12 @@ func newRequestFromStringMap(url, method string, headers map[string]string) (req
 	httpHeaders := make(http.Header)
 	for k, v := range headers {
 		if httpHeaders.Get(k) == "" {
-			httpHeaders.Add(k, v)
+			httpHeaders.Set(k, v)
 		} else {
 			return request{}, fmt.Errorf("Header key %s already exists", k)
 		}
 	}
-	return request{url, method, httpHeaders}, nil
+	return request{url, method, &httpHeaders}, nil
 }
 
 func (r request) String() string {
@@ -81,21 +81,26 @@ func newRunner() runner {
 
 // TODO: Create accessor methods for the client and transport
 
-func (r runner) RunWithDetails(request request, body body, chunkSize int, outputFile string) error {
+func (r runner) run(request request, body io.Reader, chunkSize int, outputFile string) error {
 
 	httpRequest, err := http.NewRequest(request.Method, request.Url, body)
 	if err != nil {
 		return err
 	}
 
-	httpRequest.Header = request.Headers
+  // If we have headers in the request, let's set them
+  if request.Headers != nil {
+	  httpRequest.Header = *request.Headers
+  }
 
+  // Run the actual request
 	resp, err := r.client.Do(httpRequest)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
 
+  // We want to store the content and transfer sizes
 	var expectedSize int64
 	var expectedTransferSize int64
 
@@ -126,8 +131,10 @@ func (r runner) RunWithDetails(request request, body body, chunkSize int, output
 	expectedTransferSha256 := resp.Header.Get("x-amz-transfer-sha256")
 
 	if expectedSha256 == "" {
-		return fmt.Errorf("Expected a content-sha256")
-	}
+		return fmt.Errorf("Expected a X-Amz-Meta-Content-Sha256 to have a value")
+	} else if len(expectedSha256) != 64 {
+		return fmt.Errorf("Expected X-Amz-Meta-Content-Sha256 to be 64 chars, not %d", len(expectedSha256))
+  }
 
 	if expectedTransferSha256 == "" {
 		expectedTransferSha256 = expectedSha256
@@ -198,27 +205,38 @@ func (r runner) RunWithDetails(request request, body body, chunkSize int, output
 
 	for {
 		nBytes, err := input.Read(buf)
-		if nBytes == 0 {
+		if nBytes == 0 || err == io.EOF {
 			break
 		}
 		if err != nil {
 			return err
 		}
-		output.Write(buf[:nBytes])
+
+    _, err = output.Write(buf[:nBytes])
+    if err != nil {
+      return err
+    }
 	}
 
 	transferBytes := transferCounter.count
 	contentBytes := contentCounter.count
-	//contentHash =
-	//transferHash
-
-	if expectedSize != contentBytes {
-		return fmt.Errorf("Expected transfer of %d bytes, received %d", expectedSize, contentBytes)
-	}
+  sContentHash := fmt.Sprintf("%x", contentHash.Sum(nil))
+  sTransferHash := fmt.Sprintf("%x", transferHash.Sum(nil))
 
 	if expectedTransferSize != transferBytes {
 		return fmt.Errorf("Expected %d bytes of content but have %d", expectedTransferSize, transferBytes)
 	}
 
+	if expectedTransferSha256 != sTransferHash {
+		return fmt.Errorf("Expected transfer-sha256 %s but have %s", expectedTransferSha256, sTransferHash)
+	}
+
+	if expectedSize != contentBytes {
+		return fmt.Errorf("Expected transfer of %d bytes, received %d", expectedSize, contentBytes)
+	}
+
+	if expectedSha256 != sContentHash {
+		return fmt.Errorf("Expected content-sha256 %s but have %s", expectedSha256, sContentHash)
+	}
 	return nil
 }
