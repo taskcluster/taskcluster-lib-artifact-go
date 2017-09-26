@@ -17,9 +17,10 @@ type byteCountingWriter struct {
 	count int64
 }
 
-func (c byteCountingWriter) Write(p []byte) (n int, err error) {
+func (c *byteCountingWriter) Write(p []byte) (n int, err error) {
 	nBytes := len(p)
 	c.count += int64(nBytes)
+  fmt.Printf("Increasing this byte counting writer by %d bytes to %d\n", nBytes, c.count)
 	return nBytes, nil
 }
 
@@ -115,6 +116,7 @@ func (r runner) run(request request, body io.Reader, chunkSize int, outputFile s
 		expectedSize = i
 	}
 
+
 	// Figure out which transfer size we're expecting
 	if tSize := resp.Header.Get("x-amz-meta-transfer-length"); tSize == "" {
 		expectedTransferSize = expectedSize
@@ -149,11 +151,10 @@ func (r runner) run(request request, body io.Reader, chunkSize int, outputFile s
 	// Set up the input.  In all cases, we want to tee the response body directly
 	// to the transferHash so that we're able to calculate the hash of the raw
 	// response body without any intermediate transformations (e.g. gzip)
-	input := io.TeeReader(resp.Body, transferHash)
+  var input io.Reader
 
 	// We'll create a counter to count the number of bytes written to it
-	transferCounter := byteCountingWriter{0}
-	input = io.TeeReader(input, transferCounter)
+	transferCounter := &byteCountingWriter{0}
 
 	// We want to handle content encoding.  In this case, we only accept the
 	// header being unset (implies identity), 'indentity' or 'gzip'.  We do not
@@ -168,12 +169,17 @@ func (r runner) run(request request, body io.Reader, chunkSize int, outputFile s
 		if expectedSha256 != expectedTransferSha256 {
 			return fmt.Errorf("Identity encoding requires content and transfer sha256 to be equal")
 		}
+    if expectedTransferSize != expectedSize {
+			return fmt.Errorf("Identity encoding requires content and transfer length to be equal")
+    }
+	  input = io.TeeReader(resp.Body, io.MultiWriter(transferHash, transferCounter))
 	case "gzip":
 		zr, err := gzip.NewReader(input)
 		if err != nil {
 			return err
 		}
 		input = zr
+    panic(fmt.Errorf("Hmm, not sure how to handle gzip encoding yet"))
 	default:
 		return fmt.Errorf("Unexpected content-encoding: %s", enc)
 	}
@@ -184,7 +190,7 @@ func (r runner) run(request request, body io.Reader, chunkSize int, outputFile s
 	var output io.Writer
 
 	// We want to know how many bytes are in the content
-	contentCounter := byteCountingWriter{0}
+	contentCounter := &byteCountingWriter{0}
 
 	if &outputFile == nil {
 		output = contentHash
@@ -223,8 +229,10 @@ func (r runner) run(request request, body io.Reader, chunkSize int, outputFile s
   sContentHash := fmt.Sprintf("%x", contentHash.Sum(nil))
   sTransferHash := fmt.Sprintf("%x", transferHash.Sum(nil))
 
+  fmt.Printf("CH: %s CL: %d TH: %s TL %d\n", sContentHash, contentBytes, sTransferHash, transferBytes)
+
 	if expectedTransferSize != transferBytes {
-		return fmt.Errorf("Expected %d bytes of content but have %d", expectedTransferSize, transferBytes)
+		return fmt.Errorf("Expected transfer of %d bytes, received %d", expectedTransferSize, transferBytes)
 	}
 
 	if expectedTransferSha256 != sTransferHash {
@@ -232,7 +240,7 @@ func (r runner) run(request request, body io.Reader, chunkSize int, outputFile s
 	}
 
 	if expectedSize != contentBytes {
-		return fmt.Errorf("Expected transfer of %d bytes, received %d", expectedSize, contentBytes)
+		return fmt.Errorf("Expected %d bytes of content but have %d", expectedSize, contentBytes)
 	}
 
 	if expectedSha256 != sContentHash {
