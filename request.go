@@ -129,7 +129,7 @@ func (r runner) run(request request, body io.Reader, chunkSize int, outputFile s
 
 	// Let's get the text out that we need
 	expectedSha256 := resp.Header.Get("x-amz-meta-content-sha256")
-	expectedTransferSha256 := resp.Header.Get("x-amz-transfer-sha256")
+	expectedTransferSha256 := resp.Header.Get("x-amz-meta-transfer-sha256")
 
 	if expectedSha256 == "" {
 		return fmt.Errorf("Expected a X-Amz-Meta-Content-Sha256 to have a value")
@@ -147,13 +147,14 @@ func (r runner) run(request request, body io.Reader, chunkSize int, outputFile s
 	transferHash := sha256.New()
 	contentHash := sha256.New()
 
+	// We'll create a counter to count the number of bytes written to it
+	transferCounter := &byteCountingWriter{0}
+
 	// Set up the input.  In all cases, we want to tee the response body directly
 	// to the transferHash so that we're able to calculate the hash of the raw
 	// response body without any intermediate transformations (e.g. gzip)
   var input io.Reader
-
-	// We'll create a counter to count the number of bytes written to it
-	transferCounter := &byteCountingWriter{0}
+	input = io.TeeReader(resp.Body, io.MultiWriter(transferHash, transferCounter))
 
 	// We want to handle content encoding.  In this case, we only accept the
 	// header being unset (implies identity), 'indentity' or 'gzip'.  We do not
@@ -171,15 +172,12 @@ func (r runner) run(request request, body io.Reader, chunkSize int, outputFile s
     if expectedTransferSize != expectedSize {
 			return fmt.Errorf("Identity encoding requires content and transfer length to be equal")
     }
-	  input = io.TeeReader(resp.Body, io.MultiWriter(transferHash, transferCounter))
 	case "gzip":
-	  input = io.TeeReader(resp.Body, io.MultiWriter(transferHash, transferCounter))
 		zr, err := gzip.NewReader(input)
 		if err != nil {
 			return err
 		}
 		input = zr
-    panic(fmt.Errorf("Hmm, not sure how to handle gzip encoding yet"))
 	default:
 		return fmt.Errorf("Unexpected content-encoding: %s", enc)
 	}
@@ -192,7 +190,7 @@ func (r runner) run(request request, body io.Reader, chunkSize int, outputFile s
 	// We want to know how many bytes are in the content
 	contentCounter := &byteCountingWriter{0}
 
-	if &outputFile == nil {
+	if outputFile == "" {
 		output = io.MultiWriter(contentHash, contentCounter)
 	} else {
 		of, err := os.Create(outputFile)
@@ -206,7 +204,7 @@ func (r runner) run(request request, body io.Reader, chunkSize int, outputFile s
 	// Read buffer
 	buf := make([]byte, chunkSize)
 
-  nBytes, err := io.CopyBuffer(output, input, buf)
+  _, err = io.CopyBuffer(output, input, buf)
   if err != nil {
     return err
   }
@@ -215,8 +213,6 @@ func (r runner) run(request request, body io.Reader, chunkSize int, outputFile s
 	contentBytes := contentCounter.count
   sContentHash := fmt.Sprintf("%x", contentHash.Sum(nil))
   sTransferHash := fmt.Sprintf("%x", transferHash.Sum(nil))
-
-  fmt.Printf("nBytes: %d CH: %s CL: %d TH: %s TL %d\n", nBytes, sContentHash, contentBytes, sTransferHash, transferBytes)
 
 	if expectedTransferSize != transferBytes {
 		return fmt.Errorf("Expected transfer of %d bytes, received %d", expectedTransferSize, transferBytes)
