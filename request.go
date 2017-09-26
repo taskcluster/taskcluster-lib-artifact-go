@@ -20,7 +20,6 @@ type byteCountingWriter struct {
 func (c *byteCountingWriter) Write(p []byte) (n int, err error) {
 	nBytes := len(p)
 	c.count += int64(nBytes)
-  fmt.Printf("Increasing this byte counting writer by %d bytes to %d\n", nBytes, c.count)
 	return nBytes, nil
 }
 
@@ -174,6 +173,7 @@ func (r runner) run(request request, body io.Reader, chunkSize int, outputFile s
     }
 	  input = io.TeeReader(resp.Body, io.MultiWriter(transferHash, transferCounter))
 	case "gzip":
+	  input = io.TeeReader(resp.Body, io.MultiWriter(transferHash, transferCounter))
 		zr, err := gzip.NewReader(input)
 		if err != nil {
 			return err
@@ -193,43 +193,30 @@ func (r runner) run(request request, body io.Reader, chunkSize int, outputFile s
 	contentCounter := &byteCountingWriter{0}
 
 	if &outputFile == nil {
-		output = contentHash
+		output = io.MultiWriter(contentHash, contentCounter)
 	} else {
 		of, err := os.Create(outputFile)
 		if err != nil {
 			return err
 		}
 		defer of.Close()
-		output = io.MultiWriter(of, contentHash)
+		output = io.MultiWriter(of, contentHash, contentCounter)
 	}
-
-	// Hook up the content counter
-	output = io.MultiWriter(output, contentCounter)
 
 	// Read buffer
 	buf := make([]byte, chunkSize)
 
-	for {
-		nBytes, err := input.Read(buf)
-		if nBytes == 0 || err == io.EOF {
-			break
-		}
-		if err != nil {
-			return err
-		}
-
-    _, err = output.Write(buf[:nBytes])
-    if err != nil {
-      return err
-    }
-	}
+  nBytes, err := io.CopyBuffer(output, input, buf)
+  if err != nil {
+    return err
+  }
 
 	transferBytes := transferCounter.count
 	contentBytes := contentCounter.count
   sContentHash := fmt.Sprintf("%x", contentHash.Sum(nil))
   sTransferHash := fmt.Sprintf("%x", transferHash.Sum(nil))
 
-  fmt.Printf("CH: %s CL: %d TH: %s TL %d\n", sContentHash, contentBytes, sTransferHash, transferBytes)
+  fmt.Printf("nBytes: %d CH: %s CL: %d TH: %s TL %d\n", nBytes, sContentHash, contentBytes, sTransferHash, transferBytes)
 
 	if expectedTransferSize != transferBytes {
 		return fmt.Errorf("Expected transfer of %d bytes, received %d", expectedTransferSize, transferBytes)
