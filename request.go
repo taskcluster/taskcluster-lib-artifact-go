@@ -50,7 +50,7 @@ func (r request) String() string {
 	return fmt.Sprintf("%s %s %+v", strings.ToUpper(r.Method), r.Url, r.Headers)
 }
 
-type runner struct {
+type client struct {
 	transport *http.Transport
 	client    *http.Client
 }
@@ -64,24 +64,30 @@ func checkRedirect(req *http.Request, via []*http.Request) error {
 	return http.ErrUseLastResponse
 }
 
-// Create and return a new runner with the Transport and Clients already set up
-// for use
-func newRunner() runner {
+// Create a new client for running uploads and downloads
+func New() client {
 	transport := &http.Transport{
 		MaxIdleConns:       10,
 		IdleConnTimeout:    30 * time.Second,
 		DisableCompression: true,
 	}
-	client := &http.Client{
+	_client := &http.Client{
 		Transport:     transport,
 		CheckRedirect: checkRedirect,
 	}
-	return runner{transport, client}
+	return client{transport, _client}
 }
 
-// TODO: Create accessor methods for the client and transport
+/*func (c client) runUnverified(request request, body io.Reader, chunkSize int, outputFile string) error {
+  httpRequest, err := http.NewRequest(request.Method, request.Url, body)
+  if err != nil {
+    return err
+  }
 
-func (r runner) run(request request, body io.Reader, chunkSize int, outputFile string) error {
+
+}*/
+
+func (c client) runVerified(request request, body io.Reader, chunkSize int, outputFile string) error {
 
 	httpRequest, err := http.NewRequest(request.Method, request.Url, body)
 	if err != nil {
@@ -94,7 +100,7 @@ func (r runner) run(request request, body io.Reader, chunkSize int, outputFile s
   }
 
   // Run the actual request
-	resp, err := r.client.Do(httpRequest)
+	resp, err := c.client.Do(httpRequest)
 	if err != nil {
 		return err
 	}
