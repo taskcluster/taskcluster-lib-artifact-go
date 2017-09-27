@@ -94,19 +94,19 @@ func (c client) runVerified(request request, body io.Reader, chunkSize int, outp
 		return err
 	}
 
-  // If we have headers in the request, let's set them
-  if request.Headers != nil {
-	  httpRequest.Header = *request.Headers
-  }
+	// If we have headers in the request, let's set them
+	if request.Headers != nil {
+		httpRequest.Header = *request.Headers
+	}
 
-  // Run the actual request
+	// Run the actual request
 	resp, err := c.client.Do(httpRequest)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
 
-  // We want to store the content and transfer sizes
+	// We want to store the content and transfer sizes
 	var expectedSize int64
 	var expectedTransferSize int64
 
@@ -120,7 +120,6 @@ func (c client) runVerified(request request, body io.Reader, chunkSize int, outp
 		}
 		expectedSize = i
 	}
-
 
 	// Figure out which transfer size we're expecting
 	if tSize := resp.Header.Get("x-amz-meta-transfer-length"); tSize == "" {
@@ -141,7 +140,7 @@ func (c client) runVerified(request request, body io.Reader, chunkSize int, outp
 		return fmt.Errorf("Expected a X-Amz-Meta-Content-Sha256 to have a value")
 	} else if len(expectedSha256) != 64 {
 		return fmt.Errorf("Expected X-Amz-Meta-Content-Sha256 to be 64 chars, not %d", len(expectedSha256))
-  }
+	}
 
 	if expectedTransferSha256 == "" {
 		expectedTransferSha256 = expectedSha256
@@ -159,7 +158,7 @@ func (c client) runVerified(request request, body io.Reader, chunkSize int, outp
 	// Set up the input.  In all cases, we want to tee the response body directly
 	// to the transferHash so that we're able to calculate the hash of the raw
 	// response body without any intermediate transformations (e.g. gzip)
-  var input io.Reader
+	var input io.Reader
 	input = io.TeeReader(resp.Body, io.MultiWriter(transferHash, transferCounter))
 
 	// We want to handle content encoding.  In this case, we only accept the
@@ -175,9 +174,9 @@ func (c client) runVerified(request request, body io.Reader, chunkSize int, outp
 		if expectedSha256 != expectedTransferSha256 {
 			return fmt.Errorf("Identity encoding requires content and transfer sha256 to be equal")
 		}
-    if expectedTransferSize != expectedSize {
+		if expectedTransferSize != expectedSize {
 			return fmt.Errorf("Identity encoding requires content and transfer length to be equal")
-    }
+		}
 	case "gzip":
 		zr, err := gzip.NewReader(input)
 		if err != nil {
@@ -210,15 +209,15 @@ func (c client) runVerified(request request, body io.Reader, chunkSize int, outp
 	// Read buffer
 	buf := make([]byte, chunkSize)
 
-  _, err = io.CopyBuffer(output, input, buf)
-  if err != nil {
-    return err
-  }
+	_, err = io.CopyBuffer(output, input, buf)
+	if err != nil {
+		return err
+	}
 
 	transferBytes := transferCounter.count
 	contentBytes := contentCounter.count
-  sContentHash := fmt.Sprintf("%x", contentHash.Sum(nil))
-  sTransferHash := fmt.Sprintf("%x", transferHash.Sum(nil))
+	sContentHash := fmt.Sprintf("%x", contentHash.Sum(nil))
+	sTransferHash := fmt.Sprintf("%x", transferHash.Sum(nil))
 
 	if expectedTransferSize != transferBytes {
 		return fmt.Errorf("Expected transfer of %d bytes, received %d", expectedTransferSize, transferBytes)
