@@ -96,8 +96,6 @@ func TestRequestRunning(t *testing.T) {
 		of.Close()
 	}
 
-  //body := []byte("testing123")
-
   body := _body.Bytes()
 
   var _gzipBody bytes.Buffer
