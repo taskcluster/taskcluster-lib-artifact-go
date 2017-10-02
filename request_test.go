@@ -6,13 +6,13 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
-  "io"
-  "io/ioutil"
 )
 
 const emptySha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
@@ -95,16 +95,14 @@ func TestRequestRunning(t *testing.T) {
 		of.Close()
 	}
 
-
-  _in, err := os.Open(filename)
-  if err != nil {
-    t.Fatal(err)
-  }
+	_in, err := os.Open(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
 	body, err := ioutil.ReadAll(_in)
-  if err != nil {
-    t.Fatal(err)
-  }
-
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	var _gzipBody bytes.Buffer
 	zw := gzip.NewWriter(&_gzipBody)
@@ -114,35 +112,35 @@ func TestRequestRunning(t *testing.T) {
 	}
 	zw.Close()
 	gzipBody := _gzipBody.Bytes()
-  
-  t.Run("writes request body correctly", func(t *testing.T) { 
-    outputFilename := "test-files/request-server.dat"
-    
-    ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-      var buf bytes.Buffer
-      _, err := io.Copy(&buf, r.Body)
-      if err != nil {
-        t.Error(err)
-      }
 
-      if !bytes.Equal(buf.Bytes(), body) {
-        t.Errorf("Request body not as expected. %d bytes vs expected %d", buf.Len(), len(body))
-      }
-    }))
-    defer ts.Close()
+	t.Run("writes request body correctly", func(t *testing.T) {
+		outputFilename := "test-files/request-server.dat"
 
-    req := newRequest(ts.URL, "PUT", nil);
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var buf bytes.Buffer
+			_, err := io.Copy(&buf, r.Body)
+			if err != nil {
+				t.Error(err)
+			}
 
-    body, err := newBody(filename, 0, 10*1024*1024)
-    if err != nil {
-      t.Error(err)
-    }
-    defer body.Close()
-    
-    resp, err := client.run(req, body, 1024, outputFilename, false)
-    defer resp.Body.Close()
+			if !bytes.Equal(buf.Bytes(), body) {
+				t.Errorf("Request body not as expected. %d bytes vs expected %d", buf.Len(), len(body))
+			}
+		}))
+		defer ts.Close()
 
-  })
+		req := newRequest(ts.URL, "PUT", nil)
+
+		body, err := newBody(filename, 0, 10*1024*1024)
+		if err != nil {
+			t.Error(err)
+		}
+		defer body.Close()
+
+		resp, err := client.run(req, body, 1024, outputFilename, false)
+		defer resp.Body.Close()
+
+	})
 
 	t.Run("sha256 and length verified requests", func(t *testing.T) {
 		t.Run("identity encoding", func(t *testing.T) {

@@ -1,9 +1,9 @@
 package main
 
 import (
-  "log"
-  "io"
-  "os"
+	"io"
+	"log"
+	"os"
 )
 
 // By default, we're creating a logger which is used to print to the local
@@ -11,16 +11,16 @@ import (
 // useful logs for debugging.  We do, however, want to allow the users to
 // change where logging should go, so we'll expose methods to change the
 // behaviour of logging.
-var logger = log.New(os.Stdout, "artifact:", log.Lshortfile | log.LUTC)
+var logger = log.New(os.Stdout, "artifact:", log.Lshortfile|log.LUTC)
 
 func SetLogOutput(w io.Writer) {
-  logger.SetOutput(w)
+	logger.SetOutput(w)
 }
 
 func SetLogPrefix(p string) {
-  logger.SetPrefix(p)
+	logger.SetPrefix(p)
 }
 
 func SetLogFlags(f int) {
-  logger.SetFlags(f)
+	logger.SetFlags(f)
 }
