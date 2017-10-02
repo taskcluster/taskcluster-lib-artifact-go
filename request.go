@@ -10,8 +10,11 @@ import (
 	"strconv"
 	"strings"
 	"time"
+  "errors"
 	//"bytes"
 )
+
+var CorruptResource error = errors.New("corrupt resource")
 
 type byteCountingWriter struct {
 	count int64
@@ -78,20 +81,21 @@ func New() client {
 	return client{transport, _client}
 }
 
-/*func (c client) runUnverified(request request, body io.Reader, chunkSize int, outputFile string) error {
-  httpRequest, err := http.NewRequest(request.Method, request.Url, body)
-  if err != nil {
-    return err
-  }
+// TODO: Add logging just before returning an error
 
-
-}*/
-
-func (c client) runVerified(request request, body io.Reader, chunkSize int, outputFile string) error {
+// Run a request where x-amz-meta-{transfer,content}-{sha256,length} are
+// checked against the request body.  If the outputFile option is passed in,
+// create a file and write to that file the response body.  If the response has
+// the Content-Encoding header and it's value is gzip, the response body will
+// be written post-gzip decompression.  The response struct returned from this
+// method will have a body that has had the .Close() method called.  It is
+// intended for a caller of this method to be able to inspect the headers or
+// other fields
+func (c client) run(request request, body io.Reader, chunkSize int, outputFile string, verify bool) (*http.Response, error) {
 
 	httpRequest, err := http.NewRequest(request.Method, request.Url, body)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// If we have headers in the request, let's set them
@@ -102,62 +106,29 @@ func (c client) runVerified(request request, body io.Reader, chunkSize int, outp
 	// Run the actual request
 	resp, err := c.client.Do(httpRequest)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer resp.Body.Close()
+  logger.Printf("Received response from %s %s", request.Method, request.Url)
 
-	// We want to store the content and transfer sizes
-	var expectedSize int64
-	var expectedTransferSize int64
-
-	// Figure out what content size we're expecting
-	if cSize := resp.Header.Get("x-amz-meta-content-length"); cSize == "" {
-		return fmt.Errorf("Expected Header X-Amz-Meta-Content-Length to have a value")
-	} else {
-		i, err := strconv.ParseInt(cSize, 10, 64)
-		if err != nil {
-			return err
-		}
-		expectedSize = i
-	}
-
-	// Figure out which transfer size we're expecting
-	if tSize := resp.Header.Get("x-amz-meta-transfer-length"); tSize == "" {
-		expectedTransferSize = expectedSize
-	} else {
-		i, err := strconv.ParseInt(tSize, 10, 64)
-		if err != nil {
-			return err
-		}
-		expectedTransferSize = i
-	}
-
-	// Let's get the text out that we need
-	expectedSha256 := resp.Header.Get("x-amz-meta-content-sha256")
-	expectedTransferSha256 := resp.Header.Get("x-amz-meta-transfer-sha256")
-
-	if expectedSha256 == "" {
-		return fmt.Errorf("Expected a X-Amz-Meta-Content-Sha256 to have a value")
-	} else if len(expectedSha256) != 64 {
-		return fmt.Errorf("Expected X-Amz-Meta-Content-Sha256 to be 64 chars, not %d", len(expectedSha256))
-	}
-
-	if expectedTransferSha256 == "" {
-		expectedTransferSha256 = expectedSha256
-	}
+  if resp.StatusCode >= 300 {
+    return resp, fmt.Errorf("Only 200-series HTTP response codes are supported")
+  }
 
 	// We're going to need to have the Sha256 calculated of both the bytes
-	// transfered and the bytes decompressed if there's gzip compression
-	// happening
+	// transfered and the decoded bytes if there's a content-encoding to reverse
 	transferHash := sha256.New()
 	contentHash := sha256.New()
 
-	// We'll create a counter to count the number of bytes written to it
+  // We're going to need to have the number of bytes received and size of the
+  // content
 	transferCounter := &byteCountingWriter{0}
+	contentCounter := &byteCountingWriter{0}
 
-	// Set up the input.  In all cases, we want to tee the response body directly
-	// to the transferHash so that we're able to calculate the hash of the raw
-	// response body without any intermediate transformations (e.g. gzip)
+
+  // This io.Reader is a reference to the response body, after setting up all
+  // the required plumbing for doing transfer byte counting and hashing as well
+  // as any possible content-decoding
 	var input io.Reader
 	input = io.TeeReader(resp.Body, io.MultiWriter(transferHash, transferCounter))
 
@@ -171,39 +142,33 @@ func (c client) runVerified(request request, body io.Reader, chunkSize int, outp
 	case "":
 		fallthrough
 	case "identity":
-		if expectedSha256 != expectedTransferSha256 {
-			return fmt.Errorf("Identity encoding requires content and transfer sha256 to be equal")
-		}
-		if expectedTransferSize != expectedSize {
-			return fmt.Errorf("Identity encoding requires content and transfer length to be equal")
-		}
+    logger.Printf("Resource %s %s is identity encoded", request.Method, request.Url)
 	case "gzip":
 		zr, err := gzip.NewReader(input)
 		if err != nil {
-			return err
+			return resp, err
 		}
 		input = zr
+    logger.Printf("Resource %s %s is gzip encoded", request.Method, request.Url)
 	default:
-		return fmt.Errorf("Unexpected content-encoding: %s", enc)
+		return resp, fmt.Errorf("Unexpected content-encoding: %s", enc)
 	}
 
-	// The output io.Writer is going to be set up as a chain of io.Writers where
-	// the uncompressed data should be written to.  This is the contentHash and
-	// optionally the output file
+  // This io.Writer is a reference to the output stream.  This is at least the
+  // plumbing required to calculate the content's hash and size.  Optionally
+  // this will also write the output to a file
 	var output io.Writer
-
-	// We want to know how many bytes are in the content
-	contentCounter := &byteCountingWriter{0}
 
 	if outputFile == "" {
 		output = io.MultiWriter(contentHash, contentCounter)
 	} else {
 		of, err := os.Create(outputFile)
 		if err != nil {
-			return err
+			return resp, err
 		}
 		defer of.Close()
 		output = io.MultiWriter(of, contentHash, contentCounter)
+    logger.Printf("Writing %s %s to file '%s'", request.Method, request.Url, outputFile)
 	}
 
 	// Read buffer
@@ -211,7 +176,7 @@ func (c client) runVerified(request request, body io.Reader, chunkSize int, outp
 
 	_, err = io.CopyBuffer(output, input, buf)
 	if err != nil {
-		return err
+		return resp, err
 	}
 
 	transferBytes := transferCounter.count
@@ -219,20 +184,114 @@ func (c client) runVerified(request request, body io.Reader, chunkSize int, outp
 	sContentHash := fmt.Sprintf("%x", contentHash.Sum(nil))
 	sTransferHash := fmt.Sprintf("%x", transferHash.Sum(nil))
 
-	if expectedTransferSize != transferBytes {
-		return fmt.Errorf("Expected transfer of %d bytes, received %d", expectedTransferSize, transferBytes)
-	}
+  // We don't want to do any verification for requests which are not being made
+  // to download artifacts.  Example would be requests being run to upload an
+  // artifact.
+  if verify {
 
-	if expectedTransferSha256 != sTransferHash {
-		return fmt.Errorf("Expected transfer-sha256 %s but have %s", expectedTransferSha256, sTransferHash)
-	}
+    // We want to find all the ways that the response is invalid and print a
+    // message for each so that the user can avoid having to do too many
+    // testing cycles to find all the flaws.  This variable will store
+    // information on whether this response has been found to be invalid yet or
+    // not.
+    valid := true
 
-	if expectedSize != contentBytes {
-		return fmt.Errorf("Expected %d bytes of content but have %d", expectedSize, contentBytes)
-	}
+    // We want to store the content and transfer sizes
+    var expectedSize int64
+    var expectedTransferSize int64
+    var expectedSha256 string
+    var expectedTransferSha256 string
 
-	if expectedSha256 != sContentHash {
-		return fmt.Errorf("Expected content-sha256 %s but have %s", expectedSha256, sContentHash)
-	}
-	return nil
+    // Figure out what content size we're expecting
+    if cSize := resp.Header.Get("x-amz-meta-content-length"); cSize == "" {
+      logger.Printf("Expected header X-Amz-Meta-Content-Length to have a value")
+      valid = false
+    } else {
+      i, err := strconv.ParseInt(cSize, 10, 64)
+      if err != nil {
+        return resp, err
+      }
+      expectedSize = i
+    }
+
+    // Figure out which transfer size we're expecting
+    if tSize := resp.Header.Get("x-amz-meta-transfer-length"); tSize == "" {
+      expectedTransferSize = expectedSize
+    } else {
+      i, err := strconv.ParseInt(tSize, 10, 64)
+      if err != nil {
+        return resp, err
+      }
+      expectedTransferSize = i
+    }
+
+    // Let's get the text out that we need
+    expectedSha256 = resp.Header.Get("x-amz-meta-content-sha256")
+    expectedTransferSha256 = resp.Header.Get("x-amz-meta-transfer-sha256")
+
+    if expectedSha256 == "" {
+      logger.Printf("Expected a X-Amz-Meta-Content-Sha256 to have a value")
+      valid = false
+    } else if len(expectedSha256) != 64 {
+      logger.Printf("Expected X-Amz-Meta-Content-Sha256 to be 64 chars, not %d", len(expectedSha256))
+      valid = false
+    }
+
+    if expectedTransferSha256 == "" {
+      expectedTransferSha256 = expectedSha256
+    }
+
+    if expectedTransferSize != transferBytes {
+      logger.Printf("Resource %s %s has incorrect transfer length.  Expected: %d received: %d",
+        request.Method, request.Url, expectedTransferSize, transferBytes)
+      valid = false
+    }
+
+    if expectedTransferSha256 != sTransferHash {
+      logger.Printf("Resource %s %s has incorrect transfer sha256.  Expected: %s received: %s",
+        request.Method, request.Url, expectedTransferSha256, sTransferHash)
+      valid = false
+    }
+
+    if expectedSize != contentBytes {
+      logger.Printf("Resource %s %s has incorrect content length.  Expected: %d received: %d",
+        request.Method, request.Url, expectedSize, contentBytes)
+      valid = false
+    }
+
+    if expectedSha256 != sContentHash {
+      logger.Printf("Resource %s %s has incorrect content sha256.  Expected: %s received: %s",
+        request.Method, request.Url, expectedSha256, sContentHash)
+      valid = false
+    }
+
+    if !valid {
+      logger.Printf("Response %s %s is INVALID. Received: transfer: %s %d bytes content: %s %d bytes",
+        request.Method,
+        request.Url,
+        sTransferHash[:7],
+        transferBytes,
+        sContentHash[:7],
+        contentBytes)
+      return resp, CorruptResource
+    }
+  }
+  if verify {
+    logger.Printf("Response %s %s is valid. transfer: %s %d bytes content: %s %d bytes",
+      request.Method,
+      request.Url,
+      sTransferHash[:7],
+      transferBytes,
+      sContentHash[:7],
+      contentBytes)
+  } else {
+    logger.Printf("Response %s %s is complete. transfer: %s %d bytes content: %s %d bytes",
+      request.Method,
+      request.Url,
+      sTransferHash[:7],
+      transferBytes,
+      sContentHash[:7],
+      contentBytes)
+  }
+  return resp, nil
 }
