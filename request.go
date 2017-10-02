@@ -67,7 +67,7 @@ func checkRedirect(req *http.Request, via []*http.Request) error {
 }
 
 // Create a new client for running uploads and downloads
-func New() client {
+func newAgent() client {
 	transport := &http.Transport{
 		MaxIdleConns:       10,
 		IdleConnTimeout:    30 * time.Second,

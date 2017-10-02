@@ -72,7 +72,7 @@ func sl(a []byte) string {
 }
 
 func TestRequestRunning(t *testing.T) {
-	client := New()
+	client := newAgent()
 
 	filename := "test-files/request.dat"
 
