@@ -13,7 +13,7 @@ type Artifact struct {
 func New(creds *tcclient.Credentials) *Artifact {
   q := queue.New(creds)
   a := newAgent()
-  return Artifact{q, a}
+  return &Artifact{q, a}
 }
 
 func (a *Artifact) Upload(taskId, runId, name string) error {

@@ -30,11 +30,17 @@ func newBody(filename string, offset, size int64) (*body, error) {
 
 	b := body{file, nil, offset, size}
 
-	b.Reset()
+  err = b.Reset()
+  if err != nil {
+    return nil, err
+  }
 
 	return &b, nil
 }
 
+// Reset a body to its initial state.  This involves rewinding to the beginning
+// and resetting the internal io.LimitReader that's used to read only a certain
+// number of bytes.  This is to allow retrying of a file
 func (b *body) Reset() error {
 	if _, err := b.File.Seek(b.Offset, 0); err != nil {
 		return err
@@ -44,10 +50,12 @@ func (b *body) Reset() error {
 	return nil
 }
 
+// Satisfy the io.Reader interface by reading from the associated file
 func (b body) Read(p []byte) (int, error) {
 	return b.Reader.Read(p)
 }
 
+// Close a body and return relevant values back to their nil value
 func (b *body) Close() error {
 	if err := b.File.Close(); err != nil {
 		return err
@@ -59,6 +67,7 @@ func (b *body) Close() error {
 	return nil
 }
 
-func (b body) Print() {
-	fmt.Printf("filename: %s offset: %d size: %d\n", b.File.Name(), b.Offset, b.Size)
+// Return a string representation of a Body for display
+func (b body) String() string {
+	return fmt.Sprintf("filename: %s offset: %d size: %d\n", b.File.Name(), b.Offset, b.Size)
 }
