@@ -30,10 +30,10 @@ func newBody(filename string, offset, size int64) (*body, error) {
 
 	b := body{file, nil, offset, size}
 
-  err = b.Reset()
-  if err != nil {
-    return nil, err
-  }
+	err = b.Reset()
+	if err != nil {
+		return nil, err
+	}
 
 	return &b, nil
 }

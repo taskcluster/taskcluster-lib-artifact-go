@@ -9,27 +9,46 @@ import (
 
 var allTheBytes []byte = []byte{1, 3, 7, 15, 31, 63, 127, 255}
 
-func TestBodyReading(t *testing.T) {
+const filename string = "test-files/body-reading"
+const filename2 string = "test-files/select-single-byte"
 
-	filename := "test-files/body-reading"
-
-	_file, _err := os.Create(filename)
-	if _err != nil {
-		t.Error(_err)
+func prepareFiles() error {
+	file, err := os.Create(filename)
+	if err != nil {
+		return err
 	}
 	for i := 0; i < 256; i++ {
-		_file.Write(allTheBytes)
+		_, err = file.Write(allTheBytes)
+		if err != nil {
+			return err
+		}
 	}
-	_file.Close()
-
-	filename2 := "test-files/select-single-byte"
-	_file, _err = os.Create(filename2)
-	if _err != nil {
-		t.Error(_err)
+	err = file.Close()
+	if err != nil {
+		return err
 	}
 
-	_file.Write([]byte{0, 1, 2, 3, 4, 5, 6, 7, 8})
-	_file.Close()
+	file, err = os.Create(filename2)
+	if err != nil {
+		return err
+	}
+
+	_, err = file.Write([]byte{0, 1, 2, 3, 4, 5, 6, 7, 8})
+	if err != nil {
+		return err
+	}
+
+	err = file.Close()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func TestBodyReading(t *testing.T) {
+
+	prepareFiles()
 
 	t.Run("should return error if file doesn't exist", func(t *testing.T) {
 		_, err := newBody("file", 128, 128)
