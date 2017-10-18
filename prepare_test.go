@@ -1,4 +1,4 @@
-package main
+package artifact
 
 import (
 	"bytes"
@@ -40,7 +40,7 @@ func testMPUpload(t *testing.T, upload multiPartUpload) {
 			t.Errorf("Checksum mismatch (part): %x != %x\n", hash.Sum(nil), part.Sha256)
 		}
 		if int64(nBytes) != part.Size {
-			t.Errorf("Size mismatch (part): %s != %s\n", nBytes, part.Size)
+			t.Errorf("Size mismatch (part): %d != %d\n", nBytes, part.Size)
 		}
 	}
 
@@ -48,7 +48,7 @@ func testMPUpload(t *testing.T, upload multiPartUpload) {
 		t.Errorf("Checksum mismatch: %x != %x\n", overallHash.Sum(nil), upload.TransferSha256)
 	}
 	if totalBytes != upload.TransferSize {
-		t.Errorf("Size mismatch: %s != %s\n", totalBytes, upload.TransferSize)
+		t.Errorf("Size mismatch: %d != %d\n", totalBytes, upload.TransferSize)
 	}
 }
 
@@ -74,7 +74,7 @@ func testSPUpload(t *testing.T, upload singlePartUpload) {
 		t.Errorf("Checksum mismatch: %x != %x\n", hash.Sum(nil), upload.TransferSha256)
 	}
 	if int64(nBytes) != upload.TransferSize {
-		t.Errorf("Size mismatch: %s != %s\n", nBytes, upload.TransferSize)
+		t.Errorf("Size mismatch: %d != %d\n", nBytes, upload.TransferSize)
 	}
 }
 

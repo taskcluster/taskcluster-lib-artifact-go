@@ -1,14 +1,14 @@
-package main
+package artifact
 
 import (
 	"bytes"
+	"fmt"
 	"io/ioutil"
 	"os"
-  "fmt"
 	"testing"
 )
 
-var allTheBytes []byte = []byte{1, 3, 7, 15, 31, 63, 127, 255}
+var allTheBytes = []byte{1, 3, 7, 15, 31, 63, 127, 255}
 
 const filename string = "test-files/body-reading"
 const filename2 string = "test-files/select-single-byte"
@@ -51,9 +51,9 @@ func TestBodyReading(t *testing.T) {
 
 	prepareFiles()
 
-  t.Run("os.IsNotExist(nil)", func(t *testing.T) {
-    fmt.Printf("%+v\n", os.IsNotExist(nil))
-  })
+	t.Run("os.IsNotExist(nil)", func(t *testing.T) {
+		fmt.Printf("%+v\n", os.IsNotExist(nil))
+	})
 
 	t.Run("should return error if file doesn't exist", func(t *testing.T) {
 		_, err := newBody("file", 128, 128)
@@ -113,7 +113,7 @@ func TestBodyReading(t *testing.T) {
 
 		for i := 0; i < 1024; i += 8 {
 			if !bytes.Equal(allTheBytes, bodyData[i:i+8]) {
-				t.Fatal("Body data did not match between bytes %d and %d", i, i+8)
+				t.Fatalf("Body data did not match between bytes %d and %d", i, i+8)
 			}
 		}
 	})
