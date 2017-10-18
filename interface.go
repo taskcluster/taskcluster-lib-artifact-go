@@ -8,25 +8,36 @@ import (
 	queue "github.com/taskcluster/taskcluster-client-go/queue"
 )
 
-type ArtifactClient struct {
+// Client is a struct which can upload and download artifacts.  All http
+// requests run by the same instance of a Client are run through the same http
+// transport
+type Client struct {
 	queue *queue.Queue
 	agent client
 }
 
-// Create a new Artifact action runner
-func New(creds *tcclient.Credentials) *ArtifactClient {
+// New creates a new Client
+func New(creds *tcclient.Credentials) *Client {
 	q := queue.New(creds)
 	a := newAgent()
-	return &ArtifactClient{q, a}
+	return &Client{q, a}
 }
 
-// The size at which multipart uploading is chosen automatically
-const MULTIPART_SIZE int64 = 500 * 1024 * 1024 // 500MB
+// ChunkSize is the size of each Read() and Write() call
+const ChunkSize int = 32 * 1024 // 32KB
 
-// Upload a new artifact at the given taskId, runId and name.
-// This method automatically selects whether to use the single part
-// or multi part codepath
-func (a *ArtifactClient) Upload(taskId, runId, name, filename string, gzip bool) error {
+// MultiPartSize is the size at which the automatically selecting Upload()
+// method will choose to instead do a multi-part upload instead of a single
+// part one
+const MultiPartSize int64 = 500 * 1024 * 1024 // 500MB
+
+// MultiPartPartChunkCount is the number of CHUNK_SIZE chunks should comprise a
+// single multi-part part.
+const MultiPartPartChunkCount int = 100 * 1024 * 1024 / ChunkSize // 100MB
+
+// Upload an artifact and let this library decide whether or not to use the
+// single part or multi part upload flow
+func (a *Client) Upload(taskID, runID, name, filename string, gzip bool) error {
 	fi, err := os.Stat(filename)
 	if err != nil {
 		return err
@@ -34,49 +45,43 @@ func (a *ArtifactClient) Upload(taskId, runId, name, filename string, gzip bool)
 
 	if fi.Size() > 500*1024*1024 {
 		logger.Printf("File %s is %d bytes, choosing multi-part upload", filename, fi.Size())
-		return a.MultiPartUpload(taskId, runId, name, filename, gzip)
-	} else {
-		logger.Printf("File %s is %d bytes, choosing single part upload", filename, fi.Size())
-		return a.SinglePartUpload(taskId, runId, name, filename, gzip)
+		return a.MultiPartUpload(taskID, runID, name, filename, gzip)
 	}
+
+	logger.Printf("File %s is %d bytes, choosing single part upload", filename, fi.Size())
+	return a.SinglePartUpload(taskID, runID, name, filename, gzip)
 }
 
-// Upload a new artifact at the given taskId, runId and name as in
-// Artifact.Upload, except that it forces the single part upload strategy
-func (a *ArtifactClient) SinglePartUpload(taskId, runId, name, filename string, gzip bool) error {
-	// TODO: FILL THIS REQUEST BODY OUT
-	payload := &queue.PostArtifactRequest{}
-	response, err := a.queue.CreateArtifact(taskId, runId, name, payload)
+// SinglePartUpload performs a single part upload
+func (a *Client) SinglePartUpload(taskID, runID, name, filename string, gzip bool) error {
+	spu, err := newSinglePartUpload(filename, "lala", ChunkSize, gzip)
 	if err != nil {
-		logger.Printf("Error calling Queue.CreateArtifact: %s", err)
 		return err
 	}
 
-	fmt.Printf("%+v\n", response)
-
+	fmt.Printf("%+v\n", spu)
+	// call createArtifact
 	return nil
 }
 
-// Upload a new artifact at the given taskId, runId and name as in the
-// Artifact.Upload method except that it forces the multi part upload strategy
-func (a *ArtifactClient) MultiPartUpload(taskId, runId, name, filename string, gzip bool) error {
+// MultiPartUpload performs a multi part upload
+func (a *Client) MultiPartUpload(taskID, runID, name, filename string, gzip bool) error {
+	mpu, err := newMultiPartUpload(filename, "lala", ChunkSize, MultiPartPartChunkCount, gzip)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("%+v\n", mpu)
 	return nil
 }
 
-// Download an artifact from the given taskId, runId and name.  The output
-// value is the filename where the resulting transfer should be saved.  This
-// function will overwrite existing files at this path.  This function will do
-// verifications to ensure that the transfered artifact matches the header
-// values in the artifact
-func (a *ArtifactClient) Download(taskId, runId, name, filename string) error {
+// Download will download the named artifact from a specific run of a task
+func (a *Client) Download(taskID, runID, name, filename string) error {
 	return nil
 }
 
-// Download the latest artifact from the given taskId and name.  The output
-// value is the filename where the resulting transfer should be saved.  This
-// function will overwrite existing files at this path.  This function will do
-// verifications to ensure that the transfered artifact matches the header
-// values in the artifact
-func (a *ArtifactClient) DownloadLatest(taskId, name, filename string) error {
+// DownloadLatest will download the named artifact from the latest run of a
+// task
+func (a *Client) DownloadLatest(taskID, name, filename string) error {
 	return nil
 }

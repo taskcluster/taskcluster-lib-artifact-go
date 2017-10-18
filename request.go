@@ -13,7 +13,9 @@ import (
 	"time"
 )
 
-var CorruptResource error = errors.New("corrupt resource")
+// ErrCorrupt is an error message which is specifically related to an
+// artifact being found to be corrupt
+var ErrCorrupt = errors.New("corrupt resource")
 
 type byteCountingWriter struct {
 	count int64
@@ -27,7 +29,7 @@ func (c *byteCountingWriter) Write(p []byte) (n int, err error) {
 
 // The request type contains the information needed to run an HTTP method
 type request struct {
-	Url     string
+	URL     string
 	Method  string
 	Headers *http.Header
 }
@@ -42,14 +44,14 @@ func newRequestFromStringMap(url, method string, headers map[string]string) (req
 		if httpHeaders.Get(k) == "" {
 			httpHeaders.Set(k, v)
 		} else {
-			return request{}, fmt.Errorf("Header key %s already exists", k)
+			return request{}, fmt.Errorf("header key %s already exists", k)
 		}
 	}
 	return request{url, method, &httpHeaders}, nil
 }
 
 func (r request) String() string {
-	return fmt.Sprintf("%s %s %+v", strings.ToUpper(r.Method), r.Url, r.Headers)
+	return fmt.Sprintf("%s %s %+v", strings.ToUpper(r.Method), r.URL, r.Headers)
 }
 
 type client struct {
@@ -92,7 +94,7 @@ func newAgent() client {
 // other fields
 func (c client) run(request request, body io.Reader, chunkSize int, outputFile string, verify bool) (*http.Response, error) {
 
-	httpRequest, err := http.NewRequest(request.Method, request.Url, body)
+	httpRequest, err := http.NewRequest(request.Method, request.URL, body)
 	if err != nil {
 		return nil, err
 	}
@@ -108,10 +110,10 @@ func (c client) run(request request, body io.Reader, chunkSize int, outputFile s
 		return nil, err
 	}
 	defer resp.Body.Close()
-	logger.Printf("Received response from %s %s", request.Method, request.Url)
+	logger.Printf("Received response from %s %s", request.Method, request.URL)
 
 	if resp.StatusCode >= 300 {
-		return resp, fmt.Errorf("Only 200-series HTTP response codes are supported")
+		return resp, fmt.Errorf("only 200-series HTTP response codes are supported")
 	}
 
 	// We're going to need to have the Sha256 calculated of both the bytes
@@ -140,16 +142,16 @@ func (c client) run(request request, body io.Reader, chunkSize int, outputFile s
 	case "":
 		fallthrough
 	case "identity":
-		logger.Printf("Resource %s %s is identity encoded", request.Method, request.Url)
+		logger.Printf("Resource %s %s is identity encoded", request.Method, request.URL)
 	case "gzip":
 		zr, err := gzip.NewReader(input)
 		if err != nil {
 			return resp, err
 		}
 		input = zr
-		logger.Printf("Resource %s %s is gzip encoded", request.Method, request.Url)
+		logger.Printf("Resource %s %s is gzip encoded", request.Method, request.URL)
 	default:
-		return resp, fmt.Errorf("Unexpected content-encoding: %s", enc)
+		return resp, fmt.Errorf("unexpected content-encoding: %s", enc)
 	}
 
 	// This io.Writer is a reference to the output stream.  This is at least the
@@ -166,7 +168,7 @@ func (c client) run(request request, body io.Reader, chunkSize int, outputFile s
 		}
 		defer of.Close()
 		output = io.MultiWriter(of, contentHash, contentCounter)
-		logger.Printf("Writing %s %s to file '%s'", request.Method, request.Url, outputFile)
+		logger.Printf("Writing %s %s to file '%s'", request.Method, request.URL, outputFile)
 	}
 
 	// Read buffer
@@ -241,43 +243,43 @@ func (c client) run(request request, body io.Reader, chunkSize int, outputFile s
 
 		if expectedTransferSize != transferBytes {
 			logger.Printf("Resource %s %s has incorrect transfer length.  Expected: %d received: %d",
-				request.Method, request.Url, expectedTransferSize, transferBytes)
+				request.Method, request.URL, expectedTransferSize, transferBytes)
 			valid = false
 		}
 
 		if expectedTransferSha256 != sTransferHash {
 			logger.Printf("Resource %s %s has incorrect transfer sha256.  Expected: %s received: %s",
-				request.Method, request.Url, expectedTransferSha256, sTransferHash)
+				request.Method, request.URL, expectedTransferSha256, sTransferHash)
 			valid = false
 		}
 
 		if expectedSize != contentBytes {
 			logger.Printf("Resource %s %s has incorrect content length.  Expected: %d received: %d",
-				request.Method, request.Url, expectedSize, contentBytes)
+				request.Method, request.URL, expectedSize, contentBytes)
 			valid = false
 		}
 
 		if expectedSha256 != sContentHash {
 			logger.Printf("Resource %s %s has incorrect content sha256.  Expected: %s received: %s",
-				request.Method, request.Url, expectedSha256, sContentHash)
+				request.Method, request.URL, expectedSha256, sContentHash)
 			valid = false
 		}
 
 		if !valid {
 			logger.Printf("Response %s %s is INVALID. Received: transfer: %s %d bytes content: %s %d bytes",
 				request.Method,
-				request.Url,
+				request.URL,
 				sTransferHash[:7],
 				transferBytes,
 				sContentHash[:7],
 				contentBytes)
-			return resp, CorruptResource
+			return resp, ErrCorrupt
 		}
 	}
 	if verify {
 		logger.Printf("Response %s %s is valid. transfer: %s %d bytes content: %s %d bytes",
 			request.Method,
-			request.Url,
+			request.URL,
 			sTransferHash[:7],
 			transferBytes,
 			sContentHash[:7],
@@ -285,7 +287,7 @@ func (c client) run(request request, body io.Reader, chunkSize int, outputFile s
 	} else {
 		logger.Printf("Response %s %s is complete. transfer: %s %d bytes content: %s %d bytes",
 			request.Method,
-			request.Url,
+			request.URL,
 			sTransferHash[:7],
 			transferBytes,
 			sContentHash[:7],

@@ -12,7 +12,7 @@ func testMPUpload(t *testing.T, upload multiPartUpload) {
 	overallHash := sha256.New()
 	hash := sha256.New()
 
-	var totalBytes int64 = 0
+	var totalBytes int64
 
 	for _, part := range upload.Parts {
 		hash.Reset()

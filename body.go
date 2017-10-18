@@ -19,7 +19,7 @@ type body struct {
 // total.
 func newBody(filename string, offset, size int64) (*body, error) {
 	if size == 0 {
-		return nil, errors.New("Cannot specify a size of 0")
+		return nil, errors.New("cannot specify a size of 0")
 	}
 
 	file, err := os.Open(filename)
