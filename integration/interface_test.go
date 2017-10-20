@@ -9,9 +9,10 @@ import (
 	"github.com/taskcluster/slugid-go/slugid"
 	tcclient "github.com/taskcluster/taskcluster-client-go"
 	"github.com/taskcluster/taskcluster-client-go/queue"
+	artifact "github.com/taskcluster/taskcluster-lib-artifact-go"
 )
 
-var taskGroupId string = slugid.Nice()
+var taskGroupID = slugid.Nice()
 
 // Copied from the generic-worker's artifact tests (thanks Pete!)
 func testTask(t *testing.T) *queue.TaskDefinitionRequest {
@@ -21,7 +22,7 @@ func testTask(t *testing.T) *queue.TaskDefinitionRequest {
 	// deadline in one hour' time
 	deadline := created.Add(15 * time.Minute)
 	// expiry in one day, in case we need test results
-	expires := created.AddDate(0, 0, 1)
+	expires := created.AddDate(0, 0, 2)
 
 	return &queue.TaskDefinitionRequest{
 		Created:      tcclient.Time(created),
@@ -49,12 +50,36 @@ func testTask(t *testing.T) *queue.TaskDefinitionRequest {
 		Scopes:        []string{},
 		Tags:          json.RawMessage(`{"CI":"taskcluster-lib-artifact-go"}`),
 		Priority:      "lowest",
-		TaskGroupID:   taskGroupId,
+		TaskGroupID:   taskGroupID,
 		WorkerType:    "my-workertype",
 	}
 }
 
+var allTheBytes = []byte{1, 3, 7, 15, 31, 63, 127, 255}
+
+const filename string = "test-file"
+
+// TODO: Should this still return an error or is a t.Fatal call in here enough?
+func prepareFiles(t *testing.T) {
+	file, err := os.Create(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 256; i++ {
+		_, err = file.Write(allTheBytes)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	err = file.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestIntegration(t *testing.T) {
+	prepareFiles(t)
+
 	creds := &tcclient.Credentials{}
 
 	if value, present := os.LookupEnv("TASKCLUSTER_CLIENT_ID"); present {
@@ -70,30 +95,47 @@ func TestIntegration(t *testing.T) {
 	}
 
 	q := queue.New(creds)
-	//client := artifact.New(&tcclient.Credentials{})
-	taskId := slugid.Nice()
-	t.Logf("TaskGroupId: %s Task ID: %s", taskGroupId, taskId)
+	client := artifact.New(creds)
+	taskID := slugid.Nice()
+	runID := "0"
+	t.Logf("TaskGroupId: %s Task ID: %s", taskGroupID, taskID)
 
-	_, err := q.CreateTask(taskId, testTask(t))
+	_, err := q.CreateTask(taskID, testTask(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	tcr := queue.TaskClaimRequest{WorkerGroup: "my-worker-group", WorkerID: "my-worker"}
-	_, err = q.ClaimTask(taskId, "0", &tcr)
+	_, err = q.ClaimTask(taskID, "0", &tcr)
 	if err != nil {
 		t.Fatal(err)
 	}
+	// TODO: Do a loop to support gzip and non-gzip, for now only gzip
 
-	t.Run("should be able to upload artifact", func(t *testing.T) {
+	t.Run("should be able to upload and download artifact as single part and gzip", func(t *testing.T) {
+		name := "public/forced-single-part"
+		err = client.SinglePartUpload(taskID, runID, name, filename, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = client.Download(taskID, runID, name, filename+"_out")
+		if err != nil {
+			t.Fatal(err)
+		}
 	})
 
-	t.Run("should be able to download artifact from specific run", func(t *testing.T) {
+	/*t.Run("should be able to upload artifact as multi part and gzip", func(t *testing.T) {
+		name := "public/forced-multi-part"
+		err = client.MultiPartUpload(taskID, runID, name, filename, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = client.Download(taskID, runID, name, filename+"_out")
+		if err != nil {
+			t.Fatal(err)
+		}
+	})*/
 
-	})
-
-	t.Run("should be able to download artifact from latest run", func(t *testing.T) {
-
-	})
+	// TODO: Write tests for Download vs. DownloadLatest
 
 }

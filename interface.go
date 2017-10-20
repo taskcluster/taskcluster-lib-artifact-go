@@ -1,8 +1,10 @@
 package artifact
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
+	"time"
 
 	tcclient "github.com/taskcluster/taskcluster-client-go"
 	queue "github.com/taskcluster/taskcluster-client-go/queue"
@@ -14,6 +16,22 @@ import (
 type Client struct {
 	queue *queue.Queue
 	agent client
+}
+
+// We need this different from the request.go:request type because that struct
+// uses http.Header headers and our api returns a different type of headers.
+// This would be a great cleanup one day
+type apiRequest struct {
+	URL     string            `json:"url"`
+	Method  string            `json:"method"`
+	Headers map[string]string `json:"headers"`
+}
+
+// blobArtifactResponse is the response from queue.CreateArtifact
+type blobArtifactResponse struct {
+	StorageType string        `json:"storageType"`
+	Requests    []apiRequest  `json:"requests"`
+	Expires     tcclient.Time `json:"expires"`
 }
 
 // New creates a new Client
@@ -53,14 +71,59 @@ func (a *Client) Upload(taskID, runID, name, filename string, gzip bool) error {
 }
 
 // SinglePartUpload performs a single part upload
-func (a *Client) SinglePartUpload(taskID, runID, name, filename string, gzip bool) error {
+func (c *Client) SinglePartUpload(taskID, runID, name, filename string, gzip bool) error {
 	spu, err := newSinglePartUpload(filename, "lala", ChunkSize, gzip)
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("%+v\n", spu)
-	// call createArtifact
+	cap, err := json.Marshal(&queue.BlobArtifactRequest{
+		ContentEncoding: spu.ContentEncoding,
+		ContentLength:   spu.Size,
+		ContentSha256:   fmt.Sprintf("%x", spu.Sha256),
+		TransferLength:  spu.TransferSize,
+		TransferSha256:  fmt.Sprintf("%x", spu.TransferSha256),
+		ContentType:     "application/octet-stream",
+		Expires:         tcclient.Time(time.Now().UTC().AddDate(0, 0, 1)),
+		StorageType:     "blob",
+	})
+	if err != nil {
+		return err
+	}
+
+	par := queue.PostArtifactRequest(json.RawMessage(cap))
+
+	resp, err := c.queue.CreateArtifact(taskID, runID, name, &par)
+	if err != nil {
+		return err
+	}
+
+	var bar blobArtifactResponse
+
+	err = json.Unmarshal(*resp, &bar)
+	if err != nil {
+		return err
+	}
+
+	for _, r := range bar.Requests {
+		req, err := newRequestFromStringMap(r.URL, r.Method, r.Headers)
+		if err != nil {
+			return err
+		}
+
+		body, err := newBody(spu.Filename, 0, spu.Size)
+		if err != nil {
+			return err
+		}
+
+		cs, _, err := c.agent.run(req, body, ChunkSize, "out", false)
+		if err != nil {
+			logger.Printf("%s", cs)
+			return err
+		}
+
+	}
+
 	return nil
 }
 
