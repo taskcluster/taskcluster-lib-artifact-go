@@ -2,7 +2,6 @@ package artifact
 
 import (
 	"bytes"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"testing"
@@ -49,11 +48,9 @@ func prepareFiles() error {
 
 func TestBodyReading(t *testing.T) {
 
-	prepareFiles()
+	SetLogOutput(newUnitTestLogWriter(t))
 
-	t.Run("os.IsNotExist(nil)", func(t *testing.T) {
-		fmt.Printf("%+v\n", os.IsNotExist(nil))
-	})
+	prepareFiles()
 
 	t.Run("should return error if file doesn't exist", func(t *testing.T) {
 		_, err := newBody("file", 128, 128)

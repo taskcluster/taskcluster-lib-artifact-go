@@ -72,6 +72,8 @@ func sl(a []byte) string {
 }
 
 func TestRequestRunning(t *testing.T) {
+	SetLogOutput(newUnitTestLogWriter(t))
+
 	client := newAgent()
 
 	filename := "test-files/request.dat"
@@ -114,7 +116,6 @@ func TestRequestRunning(t *testing.T) {
 	gzipBody := _gzipBody.Bytes()
 
 	t.Run("writes request body correctly", func(t *testing.T) {
-		outputFilename := "test-files/request-server.dat"
 
 		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			var buf bytes.Buffer
@@ -137,8 +138,7 @@ func TestRequestRunning(t *testing.T) {
 		}
 		defer body.Close()
 
-		resp, err := client.run(req, body, 1024, outputFilename, false)
-		defer resp.Body.Close()
+		_, _, err = client.run(req, body, 1024, nil, false)
 
 	})
 
@@ -149,7 +149,7 @@ func TestRequestRunning(t *testing.T) {
 				defer ts.Close()
 
 				req := newRequest(ts.URL, "GET", nil)
-				_, err := client.run(req, strings.NewReader(""), 1024, "", true)
+				_, _, err := client.run(req, strings.NewReader(""), 1024, nil, true)
 				if err != nil {
 					t.Error(err)
 				}
@@ -161,7 +161,7 @@ func TestRequestRunning(t *testing.T) {
 
 				req := newRequest(ts.URL, "GET", nil)
 
-				_, err := client.run(req, strings.NewReader(""), 1024, "", true)
+				_, _, err := client.run(req, strings.NewReader(""), 1024, nil, true)
 
 				if err != nil {
 					t.Error(err)
@@ -174,7 +174,7 @@ func TestRequestRunning(t *testing.T) {
 
 				req := newRequest(ts.URL, "GET", nil)
 
-				_, err := client.run(req, strings.NewReader(""), 1024, "", true)
+				_, _, err := client.run(req, strings.NewReader(""), 1024, nil, true)
 
 				if err != nil {
 					t.Error(err)
@@ -187,7 +187,7 @@ func TestRequestRunning(t *testing.T) {
 
 				req := newRequest(ts.URL, "GET", nil)
 
-				_, err := client.run(req, strings.NewReader(""), 1024, "", true)
+				_, _, err := client.run(req, strings.NewReader(""), 1024, nil, true)
 
 				if err == nil {
 					t.Error(err)
@@ -200,7 +200,7 @@ func TestRequestRunning(t *testing.T) {
 
 				req := newRequest(ts.URL, "GET", nil)
 
-				_, err := client.run(req, strings.NewReader(""), 1024, "", true)
+				_, _, err := client.run(req, strings.NewReader(""), 1024, nil, true)
 
 				// do better error checking that we got the expected error
 				if err == nil {
@@ -214,7 +214,7 @@ func TestRequestRunning(t *testing.T) {
 
 				req := newRequest(ts.URL, "GET", nil)
 
-				_, err := client.run(req, strings.NewReader(""), 1024, "", true)
+				_, _, err := client.run(req, strings.NewReader(""), 1024, nil, true)
 
 				// do better error checking that we got the expected error
 				if err == nil {
@@ -230,7 +230,7 @@ func TestRequestRunning(t *testing.T) {
 
 				req := newRequest(ts.URL, "GET", nil)
 
-				_, err = client.run(req, strings.NewReader(""), 1024, "", true)
+				_, _, err = client.run(req, strings.NewReader(""), 1024, nil, true)
 
 				if err != nil {
 					t.Error(err)
@@ -244,7 +244,7 @@ func TestRequestRunning(t *testing.T) {
 
 				req := newRequest(ts.URL, "GET", nil)
 
-				_, err = client.run(req, strings.NewReader(""), 1024, "", true)
+				_, _, err = client.run(req, strings.NewReader(""), 1024, nil, true)
 
 				if err == nil {
 					t.Error(err)
@@ -258,7 +258,7 @@ func TestRequestRunning(t *testing.T) {
 
 				req := newRequest(ts.URL, "GET", nil)
 
-				_, err = client.run(req, strings.NewReader(""), 1024, "", true)
+				_, _, err = client.run(req, strings.NewReader(""), 1024, nil, true)
 
 				if err == nil {
 					t.Error(err)
@@ -272,7 +272,7 @@ func TestRequestRunning(t *testing.T) {
 
 				req := newRequest(ts.URL, "GET", nil)
 
-				_, err = client.run(req, strings.NewReader(""), 1024, "", true)
+				_, _, err = client.run(req, strings.NewReader(""), 1024, nil, true)
 
 				if err == nil {
 					t.Error(err)

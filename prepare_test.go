@@ -79,6 +79,9 @@ func testSPUpload(t *testing.T, upload singlePartUpload) {
 }
 
 func TestUploadPreperation(t *testing.T) {
+
+	SetLogOutput(newUnitTestLogWriter(t))
+
 	filename := "test-files/10mb.dat"
 
 	// We want to do a little bit of setup before running the tests

@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -144,7 +143,7 @@ func (cs CallSummary) String() string {
 // transaction.  Example of a retryable error is a 500 series error or local IO
 // failure.  Example of a non-retryable error would be getting passed in a
 // request which has an unparsable Content-Length header
-func (c client) run(request request, body io.Reader, chunkSize int, outputFile string, verify bool) (CallSummary, bool, error) {
+func (c client) run(request request, body io.Reader, chunkSize int, outputWriter io.Writer, verify bool) (CallSummary, bool, error) {
 
 	cs := CallSummary{}
 	cs.URL = request.URL
@@ -170,13 +169,19 @@ func (c client) run(request request, body io.Reader, chunkSize int, outputFile s
 	// set in the headers, instead using the http.Request.ContentLength to figure
 	// out what to replace it with.... Except that for non-fixed length bodies,
 	// it helpfully inserts a -1 value, which results in the header being unset.
-	// What an annoying issue
-	var contentLength int64
-	if contentLength, err = strconv.ParseInt(request.Header.Get("Content-Length"), 10, 64); err != nil {
-		return cs, false, err
-	}
+	// What an annoying issue.  I did verify that the http.Header values are
+	// correctly transformed into the canonical version when Set() is called on
+	// them, so we should be safe to do the check this way.  If someone is going
+	// to set values inside the Header directly, then that's their problem.  They
+	// do expose a public canonicalization function
+	if len(httpRequest.Header["Content-Length"]) > 0 {
+		var contentLength int64
+		if contentLength, err = strconv.ParseInt(request.Header.Get("Content-Length"), 10, 64); err != nil {
+			return cs, false, err
+		}
 
-	httpRequest.ContentLength = contentLength
+		httpRequest.ContentLength = contentLength
+	}
 
 	cs.RequestHeader = &httpRequest.Header
 	// Run the actual request
@@ -260,19 +265,10 @@ func (c client) run(request request, body io.Reader, chunkSize int, outputFile s
 
 	var __dbg bytes.Buffer
 
-	if outputFile == "" {
+	if output == nil {
 		output = io.MultiWriter(contentHash, contentCounter, &__dbg)
 	} else {
-		of, err := os.Create(outputFile)
-		if err != nil {
-			// Retryable because we'll try again to recreate the file.  This will go
-			// away once we're using a ReadSeekCloser type interface and stop passing
-			// around filenames
-			return cs, true, err
-		}
-		defer of.Close()
-		output = io.MultiWriter(of, contentHash, contentCounter, &__dbg)
-		logger.Printf("Writing %s %s to file '%s'", request.Method, request.URL, outputFile)
+		output = io.MultiWriter(outputWriter, contentHash, contentCounter, &__dbg)
 	}
 
 	// Read buffer

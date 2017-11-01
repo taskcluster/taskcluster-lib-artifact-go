@@ -1,6 +1,7 @@
 package artifact
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -116,7 +117,9 @@ func (c *Client) SinglePartUpload(taskID, runID, name, filename string, gzip boo
 			return err
 		}
 
-		cs, _, err := c.agent.run(req, body, ChunkSize, "out", false)
+		var b bytes.Buffer
+
+		cs, _, err := c.agent.run(req, body, ChunkSize, &b, false)
 		if err != nil {
 			logger.Printf("%s", cs)
 			return err
