@@ -142,6 +142,28 @@ func TestRequestRunning(t *testing.T) {
 
 	})
 
+	t.Run("reads response body correctly", func(t *testing.T) {
+
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, err := io.Copy(w, bytes.NewBuffer(body))
+			if err != nil {
+				t.Error(err)
+			}
+		}))
+		defer ts.Close()
+
+		req := newRequest(ts.URL, "PUT", nil)
+
+		var output bytes.Buffer
+
+		_, _, err = client.run(req, strings.NewReader(""), 1024, &output, false)
+
+		if !bytes.Equal(output.Bytes(), body) {
+			t.Errorf("Response output does not match expected value")
+		}
+
+	})
+
 	t.Run("sha256 and length verified requests", func(t *testing.T) {
 		t.Run("identity encoding", func(t *testing.T) {
 			t.Run("can run an empty request", func(t *testing.T) {

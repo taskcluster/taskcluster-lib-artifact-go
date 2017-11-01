@@ -265,7 +265,7 @@ func (c client) run(request request, body io.Reader, chunkSize int, outputWriter
 
 	var __dbg bytes.Buffer
 
-	if output == nil {
+	if outputWriter == nil {
 		output = io.MultiWriter(contentHash, contentCounter, &__dbg)
 	} else {
 		output = io.MultiWriter(outputWriter, contentHash, contentCounter, &__dbg)
