@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"strings"
 	"testing"
 )
 
@@ -156,7 +155,7 @@ func TestRequestRunning(t *testing.T) {
 
 		var output bytes.Buffer
 
-		_, _, err = client.run(req, strings.NewReader(""), 1024, &output, false)
+		_, _, err = client.run(req, nil, 1024, &output, false)
 
 		if !bytes.Equal(output.Bytes(), body) {
 			t.Errorf("Response output does not match expected value")
@@ -171,7 +170,7 @@ func TestRequestRunning(t *testing.T) {
 				defer ts.Close()
 
 				req := newRequest(ts.URL, "GET", nil)
-				_, _, err := client.run(req, strings.NewReader(""), 1024, nil, true)
+				_, _, err := client.run(req, nil, 1024, nil, true)
 				if err != nil {
 					t.Error(err)
 				}
@@ -183,7 +182,7 @@ func TestRequestRunning(t *testing.T) {
 
 				req := newRequest(ts.URL, "GET", nil)
 
-				_, _, err := client.run(req, strings.NewReader(""), 1024, nil, true)
+				_, _, err := client.run(req, nil, 1024, nil, true)
 
 				if err != nil {
 					t.Error(err)
@@ -196,7 +195,7 @@ func TestRequestRunning(t *testing.T) {
 
 				req := newRequest(ts.URL, "GET", nil)
 
-				_, _, err := client.run(req, strings.NewReader(""), 1024, nil, true)
+				_, _, err := client.run(req, nil, 1024, nil, true)
 
 				if err != nil {
 					t.Error(err)
@@ -209,7 +208,7 @@ func TestRequestRunning(t *testing.T) {
 
 				req := newRequest(ts.URL, "GET", nil)
 
-				_, _, err := client.run(req, strings.NewReader(""), 1024, nil, true)
+				_, _, err := client.run(req, nil, 1024, nil, true)
 
 				if err == nil {
 					t.Error(err)
@@ -222,7 +221,7 @@ func TestRequestRunning(t *testing.T) {
 
 				req := newRequest(ts.URL, "GET", nil)
 
-				_, _, err := client.run(req, strings.NewReader(""), 1024, nil, true)
+				_, _, err := client.run(req, nil, 1024, nil, true)
 
 				// do better error checking that we got the expected error
 				if err == nil {
@@ -236,7 +235,7 @@ func TestRequestRunning(t *testing.T) {
 
 				req := newRequest(ts.URL, "GET", nil)
 
-				_, _, err := client.run(req, strings.NewReader(""), 1024, nil, true)
+				_, _, err := client.run(req, nil, 1024, nil, true)
 
 				// do better error checking that we got the expected error
 				if err == nil {
@@ -252,7 +251,7 @@ func TestRequestRunning(t *testing.T) {
 
 				req := newRequest(ts.URL, "GET", nil)
 
-				_, _, err = client.run(req, strings.NewReader(""), 1024, nil, true)
+				_, _, err = client.run(req, nil, 1024, nil, true)
 
 				if err != nil {
 					t.Error(err)
@@ -266,7 +265,7 @@ func TestRequestRunning(t *testing.T) {
 
 				req := newRequest(ts.URL, "GET", nil)
 
-				_, _, err = client.run(req, strings.NewReader(""), 1024, nil, true)
+				_, _, err = client.run(req, nil, 1024, nil, true)
 
 				if err == nil {
 					t.Error(err)
@@ -280,7 +279,7 @@ func TestRequestRunning(t *testing.T) {
 
 				req := newRequest(ts.URL, "GET", nil)
 
-				_, _, err = client.run(req, strings.NewReader(""), 1024, nil, true)
+				_, _, err = client.run(req, nil, 1024, nil, true)
 
 				if err == nil {
 					t.Error(err)
@@ -294,7 +293,7 @@ func TestRequestRunning(t *testing.T) {
 
 				req := newRequest(ts.URL, "GET", nil)
 
-				_, _, err = client.run(req, strings.NewReader(""), 1024, nil, true)
+				_, _, err = client.run(req, nil, 1024, nil, true)
 
 				if err == nil {
 					t.Error(err)

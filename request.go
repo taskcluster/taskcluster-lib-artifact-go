@@ -143,7 +143,7 @@ func (cs CallSummary) String() string {
 // transaction.  Example of a retryable error is a 500 series error or local IO
 // failure.  Example of a non-retryable error would be getting passed in a
 // request which has an unparsable Content-Length header
-func (c client) run(request request, body io.Reader, chunkSize int, outputWriter io.Writer, verify bool) (CallSummary, bool, error) {
+func (c client) run(request request, inputReader io.Reader, chunkSize int, outputWriter io.Writer, verify bool) (CallSummary, bool, error) {
 
 	cs := CallSummary{}
 	cs.URL = request.URL
@@ -153,9 +153,16 @@ func (c client) run(request request, body io.Reader, chunkSize int, outputWriter
 	// we're going to write to
 	reqBodyHash := sha256.New()
 	reqBodyCounter := &byteCountingWriter{0}
-	_body := io.TeeReader(body, io.MultiWriter(reqBodyHash, reqBodyCounter))
 
-	httpRequest, err := http.NewRequest(request.Method, request.URL, _body)
+	var body io.Reader
+
+	if inputReader != nil {
+		body = io.TeeReader(inputReader, io.MultiWriter(reqBodyHash, reqBodyCounter))
+	} else {
+		body = nil
+	}
+
+	httpRequest, err := http.NewRequest(request.Method, request.URL, body)
 	if err != nil {
 		return cs, false, err
 	}
