@@ -124,7 +124,7 @@ func (cs CallSummary) String() string {
 		reqHBuf.String(),
 		cs.ResponseLength,
 		cs.ResponseSha256,
-		reqHBuf.String(),
+		resHBuf.String(),
 	)
 
 }
