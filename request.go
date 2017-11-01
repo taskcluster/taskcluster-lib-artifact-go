@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"strconv"
 	"strings"
@@ -87,7 +88,10 @@ func newAgent() client {
 // CallSummary is a similar concept to that in the taskcluster-client-go
 // library, though modified for use specifically here, where we're dealing with
 // multiple mega-byte request and response bodies.  We'll only store string
-// hashes instead of payload bodies
+// hashes instead of payload bodies.  We return this instead of a raw response
+// because we need to add extra fields (e.g. hashes and whether it was
+// verified).  In this library, the CallSummary is expected to be useful for
+// programatic acccess to the resulting requests
 type CallSummary struct {
 	Method         string
 	URL            string
@@ -160,6 +164,11 @@ func (c client) run(request request, inputReader io.Reader, chunkSize int, outpu
 		body = io.TeeReader(inputReader, io.MultiWriter(reqBodyHash, reqBodyCounter))
 	} else {
 		body = nil
+		// We need to write an empty byte slice to the Hash in order to get the
+		// internal data structures to be able to run the Sum() method and get
+		// useful output
+		var emptyslice []byte
+		reqBodyHash.Write(emptyslice)
 	}
 
 	httpRequest, err := http.NewRequest(request.Method, request.URL, body)
@@ -220,11 +229,17 @@ func (c client) run(request request, inputReader io.Reader, chunkSize int, outpu
 
 	// 500-series errors are always retryable
 	if resp.StatusCode >= 500 {
+		if errBody, err := ioutil.ReadAll(resp.Body); err == nil {
+			logger.Printf("Retryable Error: %s\n%s", resp.Status, errBody)
+		}
 		return cs, true, fmt.Errorf("HTTP Status: %s (retryable)", resp.Status)
 	}
 
-	// 300, 400 series errors are never retryable
-	if resp.StatusCode >= 300 {
+	// 400-series errors are never retryable
+	if resp.StatusCode >= 400 {
+		if errBody, err := ioutil.ReadAll(resp.Body); err == nil {
+			logger.Printf("Non-Retryable Error: %s\n%s", resp.Status, errBody)
+		}
 		return cs, false, fmt.Errorf("HTTP Status: %s (not-retryable)", resp.Status)
 	}
 
