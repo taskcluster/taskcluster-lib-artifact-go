@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"io/ioutil"
 	"os"
 	"testing"
 	"time"
@@ -109,13 +110,27 @@ func downloadCheck(t *testing.T, client *artifact.Client, expected []byte, taskI
 	t.Logf("Downloaded latest artifact %s-%s-%s", taskID, runID, name)
 }
 
+func createInOut(t *testing.T) (*os.File, *os.File) {
+	inFile, err := os.Open(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	outFile, err := ioutil.TempFile(".", ".scratch")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return inFile, outFile
+}
+
 func TestIntegration(t *testing.T) {
 	lf, err := os.Create("log")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer lf.Close()
-	artifact.SetLogOutput(lf)
+	//artifact.SetLogOutput(lf)
 	body := prepareFiles(t)
 
 	creds := &tcclient.Credentials{}
@@ -160,7 +175,8 @@ func TestIntegration(t *testing.T) {
 	t.Run("should be able to upload and download artifact as single part and identity", func(t *testing.T) {
 		name := "public/forced-single-part-identity"
 		t.Logf("Uploading a single part file")
-		err = client.SinglePartUpload(taskID, runID, name, filename, false, taskQ)
+		input, output := createInOut(t)
+		err = client.Upload(taskID, runID, name, input, output, false, false, taskQ)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -170,7 +186,8 @@ func TestIntegration(t *testing.T) {
 	t.Run("should be able to upload and download artifact as multi part and identity", func(t *testing.T) {
 		name := "public/forced-multi-part-identity"
 		t.Logf("Uploading a multi-part file")
-		err = client.MultiPartUpload(taskID, runID, name, filename, false, taskQ)
+		input, output := createInOut(t)
+		err = client.Upload(taskID, runID, name, input, output, false, true, taskQ)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -180,7 +197,8 @@ func TestIntegration(t *testing.T) {
 	t.Run("should be able to upload and download artifact as single part and gzip", func(t *testing.T) {
 		name := "public/forced-single-part-gzip"
 		t.Logf("Uploading a single part file")
-		err = client.SinglePartUpload(taskID, runID, name, filename, true, taskQ)
+		input, output := createInOut(t)
+		err = client.Upload(taskID, runID, name, input, output, true, false, taskQ)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -190,7 +208,8 @@ func TestIntegration(t *testing.T) {
 	t.Run("should be able to upload and download artifact as multi part and gzip", func(t *testing.T) {
 		name := "public/forced-multi-part-gzip"
 		t.Logf("Uploading a multi-part file")
-		err = client.MultiPartUpload(taskID, runID, name, filename, true, taskQ)
+		input, output := createInOut(t)
+		err = client.Upload(taskID, runID, name, input, output, true, true, taskQ)
 		if err != nil {
 			t.Fatal(err)
 		}

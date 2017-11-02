@@ -220,7 +220,7 @@ func (c client) run(request request, inputReader io.Reader, chunkSize int, outpu
 	// 500-series errors are always retryable
 	if resp.StatusCode >= 500 {
 		if errBody, err := ioutil.ReadAll(resp.Body); err == nil {
-			logger.Printf("Retryable Error: %s\n%s", resp.Status, errBody)
+			logger.Printf("Retryable Error %s\nBody:\n%s", cs, errBody)
 		}
 		return cs, true, fmt.Errorf("HTTP Status: %s (retryable)", resp.Status)
 	}
@@ -228,7 +228,7 @@ func (c client) run(request request, inputReader io.Reader, chunkSize int, outpu
 	// 400-series errors are never retryable
 	if resp.StatusCode >= 400 {
 		if errBody, err := ioutil.ReadAll(resp.Body); err == nil {
-			logger.Printf("Non-Retryable Error: %s\n%s", resp.Status, errBody)
+			logger.Printf("Non-Retryable Error %s\nBody:\n%s", cs, errBody)
 		}
 		return cs, false, fmt.Errorf("HTTP Status: %s (not-retryable)", resp.Status)
 	}

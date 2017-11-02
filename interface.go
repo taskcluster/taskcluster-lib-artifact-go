@@ -110,20 +110,26 @@ func (c *Client) Upload(taskID, runID, name string, input io.ReadSeeker, output 
 
 	var bares blobArtifactResponse
 
-	// BEGIN HACK
-	// TODO There's a slight hack required here because the queue is currently
-	// serving the content length with a non-string value.  This has been
-	// addressed in Queue PR#220 but we're going to do a quick hack because of
-	// the change freeze.  Basically, we're going to rewrite the content-length
-	// as a string in json terms.  This is a horrible idea for production, so we
-	// really do need #220 to land before deploying this
-	clpat := regexp.MustCompile("\"content-length\"[[:space:]]*:[[:space:]]*(\\d*)")
-	fixed := clpat.ReplaceAll(*resp, []byte("\"content-length\": \"$1\""))
-	err = json.Unmarshal(fixed, &bares)
-	// END HACK
-	//err = json.Unmarshal(*resp, &bares)
-	if err != nil {
-		return err
+	if multipart {
+		// TODO There's a slight hack required here because the queue is currently
+		// serving the content length with a non-string value, but only for
+		// multipart uploads.  This has been addressed in Queue PR#220 but we're
+		// going to do a quick hack because of the change freeze.  Basically, we're
+		// going to rewrite the content-length as a string in json terms.  This is
+		// a horrible idea for production, so we When removing this, just the else
+		// clause should remain
+		// really do need #220 to land before deploying this
+		clpat := regexp.MustCompile("\"content-length\"[[:space:]]*:[[:space:]]*(\\d*)")
+		fixed := clpat.ReplaceAll(*resp, []byte("\"content-length\": \"$1\""))
+		err = json.Unmarshal(fixed, &bares)
+		if err != nil {
+			return err
+		}
+	} else {
+		err = json.Unmarshal(*resp, &bares)
+		if err != nil {
+			return err
+		}
 	}
 
 	etags := make([]string, len(bares.Requests))
@@ -144,14 +150,19 @@ func (c *Client) Upload(taskID, runID, name string, input io.ReadSeeker, output 
 	// Another option would be to pass in a factory method instead of raw
 	// ReadSeekers and have the factory return a ReadSeeker for each
 	// request body.  Maybe we really need a ReaderAtSeekCloser...
-	for i := 0; i < len(bares.Requests); i++ {
-		r := bares.Requests[i]
+	for i, r := range bares.Requests {
 		req, err := newRequestFromStringMap(r.URL, r.Method, r.Headers)
 		if err != nil {
 			return err
 		}
 
-		body, err := newBody(input, u.Parts[i].Start, u.Parts[i].Size)
+		var b *body
+
+		if u.Parts == nil {
+			b, err = newBody(input, 0, u.TransferSize)
+		} else {
+			b, err = newBody(input, u.Parts[i].Start, u.Parts[i].Size)
+		}
 		if err != nil {
 			return err
 		}
@@ -160,7 +171,7 @@ func (c *Client) Upload(taskID, runID, name string, input io.ReadSeeker, output 
 		// because we're pretty sure in this method that it's going to be an S3
 		// error message and we'd like to print that
 		var outputBuf bytes.Buffer
-		cs, _, err := c.agent.run(req, body, ChunkSize, &outputBuf, false)
+		cs, _, err := c.agent.run(req, b, ChunkSize, &outputBuf, false)
 		if err != nil {
 			logger.Printf("%s\n%s", cs, outputBuf.String())
 			return err
@@ -209,7 +220,6 @@ func (c *Client) download(url string, outputWriter io.Writer, q *queue.Queue) er
 	// contain the
 	cs, _, err = c.agent.run(request, nil, ChunkSize, outputWriter, true)
 	if err != nil {
-		logger.Printf("%s", cs)
 		return err
 	}
 
