@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"regexp"
 	"time"
 
 	tcclient "github.com/taskcluster/taskcluster-client-go"
@@ -101,7 +102,6 @@ func (c *Client) SinglePartUpload(taskID, runID, name, filename string, gzip boo
 
 	var bar blobArtifactResponse
 
-	fmt.Printf("RESP: %s\n, BAR: %#v", resp, bar)
 	err = json.Unmarshal(*resp, &bar)
 	if err != nil {
 		return err
@@ -188,8 +188,18 @@ func (c *Client) MultiPartUpload(taskID, runID, name, filename string, gzip bool
 
 	var bar blobArtifactResponse
 
-	fmt.Printf("RESP: %s\n, BAR: %#v", resp, bar)
-	err = json.Unmarshal(*resp, &bar)
+	// BEGIN HACK
+	// TODO There's a slight hack required here because the queue is currently
+	// serving the content length with a non-string value.  This has been
+	// addressed in Queue PR#220 but we're going to do a quick hack because of
+	// the change freeze.  Basically, we're going to rewrite the content-length
+	// as a string in json terms.  This is a horrible idea for production, so we
+	// really do need #220 to land before deploying this
+	clpat := regexp.MustCompile("\"content-length\"[[:space:]]*:[[:space:]]*(\\d*)")
+	fixed := clpat.ReplaceAll(*resp, []byte("\"content-length\": \"$1\""))
+	err = json.Unmarshal(fixed, &bar)
+	// END HACK
+	//err = json.Unmarshal(*resp, &bar)
 	if err != nil {
 		return err
 	}
