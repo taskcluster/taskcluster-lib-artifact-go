@@ -7,7 +7,7 @@ import (
 )
 
 type body struct {
-	backingReader ReadSeekCloser
+	backingReader io.ReadSeeker
 	limitReader   io.Reader
 	offset        int64
 	size          int64
@@ -16,7 +16,7 @@ type body struct {
 // Create a body.  A body is an io.Reader instance which reads from the file at
 // filename, starting at the `offset`th byte and reading up to `size` bytes in
 // total.
-func newBody(input ReadSeekCloser, offset, size int64) (*body, error) {
+func newBody(input io.ReadSeeker, offset, size int64) (*body, error) {
 	if size == 0 {
 		return nil, errors.New("cannot specify a size of 0")
 	}
@@ -49,9 +49,14 @@ func (b body) Read(p []byte) (int, error) {
 }
 
 // Close a body and return relevant values back to their nil value
+// TODO: I'm pretty sure that I don't need this function
 func (b *body) Close() error {
-	if err := b.backingReader.Close(); err != nil {
-		return err
+	// If the backing reader happens to also support the Closer interface, we'll
+	// propogate calls to it
+	if closer, ok := b.backingReader.(io.Closer); ok {
+		if err := closer.Close(); err != nil {
+			return err
+		}
 	}
 
 	b.backingReader = nil

@@ -2,68 +2,31 @@ package artifact
 
 import (
 	"bytes"
-	"compress/gzip"
+	zlib "compress/gzip"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
 	"math"
-	"os"
 	"strings"
 	"time"
 )
 
-// Internal struct for hashing a simple single part file without compression
-type singlePartFileInfo struct {
-	Sha256 []byte
-	Size   int64
-}
-
-// Internal struct for hashing a simple single part file with compression
-type compressedSinglePartFileInfo struct {
-	Sha256          []byte
-	Size            int64
-	TransferSha256  []byte
-	TransferSize    int64
-	ContentEncoding string
-}
-
-// Internal struct for hashing a simple single part file without compression
-type multiPartFileInfo struct {
-	Sha256 []byte
-	Size   int64
-	Parts  []part
-}
-
-// A singlePartUpload represents the information required to do an upload of a
-// single part file with or without compression.
-type singlePartUpload struct {
-	Filename        string
-	Sha256          []byte
-	Size            int64
-	TransferSha256  []byte
-	TransferSize    int64
-	ContentEncoding string
-}
-
-func (u singlePartUpload) String() string {
-	return fmt.Sprintf("Single Part Upload Filename: %s, Sha256: %x, Size: %d, TransferSha256: %x, TransferSize: %d, ContentEncoding: %s",
-		u.Filename, u.Sha256, u.Size, u.TransferSha256, u.TransferSize, u.ContentEncoding)
-}
-
-// A Part represents the information about a single part of a multipart upload
+// Part is a description of a single part of a multi-part upload
 type part struct {
 	Sha256 []byte
 	Size   int64
 	Start  int64
 }
 
+// Part should implement the Stringer interface
 func (u part) String() string {
 	return fmt.Sprintf("Sha256: %x, Start: %d, Size: %d", u.Sha256, u.Start, u.Size)
 }
 
-// A multiPartUpload represents the information about a multipart upload
-type multiPartUpload struct {
-	Filename        string
+// Upload contains information relevant to program internals about the upload
+// being performed
+type upload struct {
 	Sha256          []byte
 	Size            int64
 	TransferSha256  []byte
@@ -72,204 +35,36 @@ type multiPartUpload struct {
 	Parts           []part
 }
 
-func (u multiPartUpload) String() string {
-	var partsStrings []string
-	for _, part := range u.Parts {
-		partsStrings = append(partsStrings, part.String())
+// Upload should implement the Stringer interface
+func (u upload) String() string {
+	partsString := ""
+	if u.Parts != nil {
+		var partsStrings []string
+		for _, part := range u.Parts {
+			partsStrings = append(partsStrings, part.String())
+		}
+		partsString = ", Parts: [{" + strings.Join(partsStrings, "}, {") + "}]"
 	}
-	partsString := strings.Join(partsStrings, "}, {")
 	return fmt.Sprintf(
-		"Multi-part File Upload Filename: %s , Sha256: %x, Size: %d, "+
-			"TransferSha256: %x, TransferSize: %d, ContentEncoding: %s, Parts: [{%s}]",
-		u.Filename, u.Sha256, u.Size, u.TransferSha256, u.TransferSize, u.ContentEncoding, partsString)
+		"Upload Sha256: %x, Size: %d, TransferSha256: %x, TransferSize: %d, ContentEncoding: %s%s",
+		u.Sha256, u.Size, u.TransferSha256, u.TransferSize, u.ContentEncoding, partsString)
 }
 
-// Hash a file and count the number of bytes in it in a single pass.  File is
-// streamed and an effort is made to ensure that if the file is modified during
-// the process that the function return an error.  The `chunkSize` parameter is
-// the maximum number of bytes that will be read in each attempt to read the
-// file
-func hashFile(filename string, chunkSize int) (singlePartFileInfo, error) {
-	// Create a file handle
-	f, err := os.Open(filename)
-	if err != nil {
-		return singlePartFileInfo{}, err
-	}
-	defer f.Close()
-
-	// Determine the filesize
-	fi, err := f.Stat()
-	if err != nil {
-		return singlePartFileInfo{}, err
-	}
-	size := fi.Size()
-
-	// Create a Hash object which we'll write bytes to as they're read in
-	hash := sha256.New()
-
-	buf := make([]byte, chunkSize)
-
-	// Since total file sizes can be int64, we want to ensure that our filesize
-	// counter handles this and is an int64 as well
-	var totalBytes int64
-
-	for {
-		nBytes, err := f.Read(buf)
-		if nBytes == 0 || err == io.EOF {
-			break
-		}
-		if err != nil {
-			return singlePartFileInfo{}, err
-		}
-
-		// NOTE: Per docs, this function never returns an error
-		hash.Write(buf[:nBytes])
-
-		// Even though nBytes is quite small compared to an int64, we must cast it
-		// because go will (thankfully) require that the types are the same to add
-		// them
-		totalBytes += int64(nBytes)
+// Detmerine the hash of each chunk of the input as well as the overall hash of
+// the file.  This overall hash is calculated and returned to allow the caller
+// to ensure that the same file which they have prepared for upload is the one
+// for which the parts were calculated.  It is a defect in calling code to not
+// compared the []byte return value to that of the the file which is expected
+// to be read.  Comparison can be made with bytes.Equal()
+func hashFileParts(input io.ReadSeeker, size int64, chunkSize, chunksInPart int) ([]part, []byte, error) {
+	if _, err := input.Seek(0, io.SeekStart); err != nil {
+		return []part{}, []byte{}, err
 	}
 
-	if totalBytes != size {
-		return singlePartFileInfo{}, fmt.Errorf("file size changed during hashing from %d to %d", size, totalBytes)
-	}
-	if fi, err := f.Stat(); err == nil {
-		if size != fi.Size() {
-			return singlePartFileInfo{}, fmt.Errorf("file size changed during hashing from %d to %d", size, fi.Size())
-		}
-	} else {
-		return singlePartFileInfo{}, err
-	}
-
-	return singlePartFileInfo{hash.Sum(nil), totalBytes}, nil
-}
-
-// Compress a file, hashing the contents and counting the bytes both before and
-// after the compressor.  Compression and hashing operations are done using
-// streaming.  An effort is made to check if the file has changed while the
-// operation was being performed.  The `outFilename` parameter is a file path
-// where the output should be written and will truncate an existing file at
-// this location.  The `chunkSize` parameter represents the maximum number of
-// bytes to read in any given read attempt.
-func gzipAndHashFile(inFilename, outFilename string, chunkSize int) (compressedSinglePartFileInfo, error) {
-	// Create a file handle
-	f, err := os.Open(inFilename)
-	if err != nil {
-		return compressedSinglePartFileInfo{}, err
-	}
-	defer f.Close()
-
-	of, err := os.Create(outFilename)
-	if err != nil {
-		return compressedSinglePartFileInfo{}, err
-	}
-	defer of.Close()
-
-	// Determine the filesize
-	fi, err := f.Stat()
-	if err != nil {
-		return compressedSinglePartFileInfo{}, err
-	}
-	size := fi.Size()
-
-	// Create a Hash object which we'll write bytes to as they're read in
-	hash := sha256.New()
-	transferHash := sha256.New()
-
-	buf := make([]byte, chunkSize)
-
-	// Since total file sizes can be int64, we want to ensure that our filesize
-	// counter handles this and is an int64 as well
-	var totalBytes int64
-
-	// The Gzip writer will have anything written to it compressed then written
-	// to the underlying io.Writer.  Does not return an error
-	gzipWriter := gzip.NewWriter(io.MultiWriter(transferHash, of))
-	defer gzipWriter.Close()
-
-	// We're setting constant headers so that gzip has deterministic output
-	gzipWriter.ModTime = time.Date(2000, time.January, 0, 0, 0, 0, 0, time.UTC)
-
-	output := io.MultiWriter(gzipWriter, hash)
-
-	for {
-		nBytes, err := f.Read(buf)
-		if nBytes == 0 {
-			break
-		}
-		if err != nil {
-			return compressedSinglePartFileInfo{}, err
-		}
-
-		if _, err := output.Write(buf[:nBytes]); err != nil {
-			return compressedSinglePartFileInfo{}, err
-		}
-
-		// Even though nBytes is quite small compared to an int64, we must cast it
-		// because go will (thankfully) require that the types are the same to add
-		// them
-		totalBytes += int64(nBytes)
-
-	}
-
-	if totalBytes != size {
-		err := fmt.Errorf("file size changed during hashing from %d to %d", size, totalBytes)
-		return compressedSinglePartFileInfo{}, err
-	}
-	if fi, err := f.Stat(); err == nil {
-		if size != fi.Size() {
-			err := fmt.Errorf("file size changed during hashing from %d to %d", size, fi.Size())
-			return compressedSinglePartFileInfo{}, err
-		}
-	} else {
-		return compressedSinglePartFileInfo{}, err
-	}
-
-	// We need to close the Gzip writer otherwise we don't
-	gzipWriter.Close()
-	if err := of.Sync(); err != nil {
-		panic(err)
-	}
-
-	ofi, err := of.Stat()
-	if err != nil {
-		return compressedSinglePartFileInfo{}, err
-	}
-
-	return compressedSinglePartFileInfo{hash.Sum(nil), totalBytes, transferHash.Sum(nil), ofi.Size(), "gzip"}, nil
-}
-
-// In a single pass, hash a file as well as the parts based on the chunkSize
-// and chunksInPart parameters.  The chunkSize is the.  The `chunkSize`
-// parameter is the maximum number of bytes to read in a single read attempt.
-// The `chunksInPart` parameter is the maximum number of `chunkSize` sized
-// chunks in each part.  The maximum part size is therefore `chunkSize *
-// chunksInPart`.
-func hashFileParts(filename string, chunkSize, chunksInPart int) (multiPartFileInfo, error) {
-	// Create a file handle
-	f, err := os.Open(filename)
-	if err != nil {
-		return multiPartFileInfo{}, err
-	}
-	defer f.Close()
-
-	// Determine the filesize
-	fi, err := f.Stat()
-	if err != nil {
-		return multiPartFileInfo{}, err
-	}
-	size := fi.Size()
-
-	// Create a Hash object which we'll write bytes to as they're read in
 	hash := sha256.New()
 	partHash := sha256.New()
 
 	buf := make([]byte, chunkSize)
-
-	// Since total file sizes can be int64, we want to ensure that our filesize
-	// counter handles this and is an int64 as well
-	var totalBytes int64
 
 	// We need to keep track of which part we're currently working in
 	currentPart := 0
@@ -284,11 +79,12 @@ func hashFileParts(filename string, chunkSize, chunksInPart int) (multiPartFileI
 	// We need to know the theoretically maximum partSize
 	partSize := int64(chunkSize * chunksInPart)
 	totalParts := int(math.Ceil(float64(size) / float64(partSize)))
-	// TODO the +1 is a bug
+
+	// We need somewhere to store the parts
 	parts := make([]part, totalParts)
 
 	for {
-		nBytes, err := f.Read(buf)
+		nBytes, err := input.Read(buf)
 
 		if nBytes == 0 {
 			if currentPartSize > 0 {
@@ -298,17 +94,13 @@ func hashFileParts(filename string, chunkSize, chunksInPart int) (multiPartFileI
 		}
 
 		if err != nil {
-			return multiPartFileInfo{}, err
+			return []part{}, []byte{}, err
 		}
 
 		// NOTE: Per docs, this function never returns an error
 		hash.Write(buf[:nBytes])
 		partHash.Write(buf[:nBytes])
 
-		// Even though nBytes is quite small compared to an int64, we must cast it
-		// because go will (thankfully) require that the types are the same to add
-		// them
-		totalBytes += int64(nBytes)
 		currentPartSize += int64(nBytes)
 
 		// Since we read data, the file continues to be read, so let's figure out
@@ -327,139 +119,117 @@ func hashFileParts(filename string, chunkSize, chunksInPart int) (multiPartFileI
 		}
 	}
 
-	if totalBytes != size {
-		err := fmt.Errorf("file size changed during hashing from %d to %d", size, totalBytes)
-		return multiPartFileInfo{}, err
-	}
-
-	if fi, err := f.Stat(); err == nil {
-		if size != fi.Size() {
-			err := fmt.Errorf("file size changed during hashing from %d to %d", size, fi.Size())
-			return multiPartFileInfo{}, err
-		}
-	} else {
-		return multiPartFileInfo{}, err
-	}
-
-	return multiPartFileInfo{hash.Sum(nil), totalBytes, parts}, nil
+	return parts, hash.Sum(nil), nil
 }
 
-// Prepare a single part upload with or without gzip encoding.  If gzip
-// encoding is used, the `outFilename` parameter is the file path where the
-// intermediate gzip-encoded file is stored.  Any file at this path will be
-// truncated.  It is the responsibility of the caller to remove this file after
-// they have uploaded the file.  The `chunkSize` parameter is the maximum
-// number of bytes that should be read from the `inFilename` file in each read
-// attempt
-func newSinglePartUpload(inFilename, outFilename string, chunkSize int, gzip bool) (singlePartUpload, error) {
-	if _, err := os.Stat(inFilename); os.IsNotExist(err) {
-		return singlePartUpload{}, err
+// In order to do an upload of a single-part file, we need to do the following things:
+//   1. determine the input size
+//   2. calculate the input's sha256
+//   3. optionally gzip-encode the input
+//   4. write the intput to the output
+//   5. determine the output size
+//   6. calculate the output's sha256
+// For both gzip and non-gzip encoded resources, we write from the input to the
+// output.  This is done to ensure that the file which is uploaded is exactly
+// that which was hashed.
+// Calling code is responsible for cleaning up whatever is written to output
+func singlePartUpload(input io.ReadSeeker, output io.Writer, gzip bool, chunkSize int) (upload, error) {
+	if _, err := input.Seek(0, io.SeekStart); err != nil {
+		return upload{}, err
 	}
 
+	hash := sha256.New()
+	buf := make([]byte, chunkSize)
+
+	// When we're compressing using gzip, we're going to use a more complex copy routine
 	if gzip {
-		if outFilename == "" {
-			err := fmt.Errorf("when using gzip encoding, an outFilename value must be provided")
-			return singlePartUpload{}, err
+		transferHash := sha256.New()
+		// Unfortunately, the gzip.Writer doesn't track how many bytes were written
+		// to the underlying io.Writer, so we need to do that
+		transferSize := byteCountingWriter{0}
+		gzipWriter := zlib.NewWriter(io.MultiWriter(transferHash, output, &transferSize))
+
+		// We're setting constant headers so that gzip has deterministic output
+		gzipWriter.ModTime = time.Date(2000, time.January, 0, 0, 0, 0, 0, time.UTC)
+
+		_output := io.MultiWriter(gzipWriter, hash)
+
+		totalBytes, err := io.CopyBuffer(_output, input, buf)
+
+		if err != nil {
+			return upload{}, err
 		}
 
-		gzipped, err := gzipAndHashFile(inFilename, outFilename, chunkSize)
+		// We need to close the gzip writer in order to get the Gzip footer.  Note
+		// that this does not close the output ReadSeekCloser that we passed in
+		gzipWriter.Close()
 
-		if err == nil {
-			return singlePartUpload{
-				Filename:        outFilename,
-				Sha256:          gzipped.Sha256,
-				Size:            gzipped.Size,
-				TransferSha256:  gzipped.TransferSha256,
-				TransferSize:    gzipped.TransferSize,
-				ContentEncoding: gzipped.ContentEncoding,
-			}, nil
-		}
-
-		return singlePartUpload{}, err
-	}
-
-	identity, err := hashFile(inFilename, chunkSize)
-
-	if err == nil {
-		return singlePartUpload{
-			Filename:        inFilename,
-			Sha256:          identity.Sha256,
-			Size:            identity.Size,
-			TransferSha256:  identity.Sha256,
-			TransferSize:    identity.Size,
-			ContentEncoding: "identity",
+		return upload{
+			Sha256:          hash.Sum(nil),
+			Size:            totalBytes,
+			TransferSha256:  transferHash.Sum(nil),
+			TransferSize:    transferSize.count,
+			ContentEncoding: "gzip",
 		}, nil
 	}
 
-	return singlePartUpload{}, err
+	// Otherwise, identity encoding is drastically simpler
+	_output := io.MultiWriter(output, hash)
+
+	totalBytes, err := io.CopyBuffer(_output, input, buf)
+	if err != nil {
+		return upload{}, err
+	}
+
+	return upload{
+		Sha256:          hash.Sum(nil),
+		Size:            totalBytes,
+		TransferSha256:  hash.Sum(nil),
+		TransferSize:    totalBytes,
+		ContentEncoding: "identity",
+	}, nil
 }
 
-// Prepare a multi part upload with or without gzip encoding.  If gzip encoding
-// is used, the `outFilename` parameter is the file path where the intermediate
-// gzip-encoded file is stored.  Any file at this path will be truncated.  It
-// is the responsibility of the caller to remove this file after they have
-// uploaded the file.  The `chunkSize` parameter is the maximum number of bytes
-// that should be read from the `inFilename` file in each read attempt.  The
-// `chunksInPart` parameter is the maximum number of `chunkSize` chunks in each
-// part.  Note that the partsize is `chunkSize * chunksInPart`
-func newMultiPartUpload(inFilename, outFilename string, chunkSize, chunksInPart int, gzip bool) (multiPartUpload, error) {
+// This function is similar to singlePartUpload, except the output of the
+// copy/gzip operation from singlePartUpload is broken into parts and hashed.
+// The chunkSize and chunksInParts can be multiplied to determine the part size
+// Calling code is responsible for cleaning up whatever is written to output
+func multiPartUpload(input io.ReadSeeker, output io.ReadWriteSeeker, gzip bool, chunkSize, chunksInPart int) (upload, error) {
+
+	// We want to make sure we're at the start of the input
+	if _, err := input.Seek(0, io.SeekStart); err != nil {
+		return upload{}, err
+	}
 
 	partSize := chunkSize * chunksInPart
 
 	if partSize < 1024*1024*5 {
 		err := fmt.Errorf("partsize must be at least 5 MB, not %d", partSize)
-		return multiPartUpload{}, err
+		return upload{}, err
 	}
 
-	if gzip {
-		if outFilename == "" {
-			err := fmt.Errorf("when using gzip encoding, an outFilename value must be provided")
-			return multiPartUpload{}, err
-		}
-
-		gzipped, err := gzipAndHashFile(inFilename, outFilename, chunkSize)
-
-		if err != nil {
-			return multiPartUpload{}, err
-		}
-
-		hashedParts, err := hashFileParts(outFilename, chunkSize, chunksInPart)
-
-		if err != nil {
-			return multiPartUpload{}, err
-		}
-
-		// We want to make sure that the same file which we compressed is the file
-		// that we broke into parts and hashed the parts
-		if !bytes.Equal(hashedParts.Sha256, gzipped.TransferSha256) {
-			err := fmt.Errorf("file changed between compression and hashing of parts")
-			return multiPartUpload{}, err
-		}
-
-		return multiPartUpload{
-			Filename:        outFilename,
-			Sha256:          gzipped.Sha256,
-			Size:            gzipped.Size,
-			TransferSha256:  gzipped.TransferSha256,
-			TransferSize:    gzipped.TransferSize,
-			ContentEncoding: gzipped.ContentEncoding,
-			Parts:           hashedParts.Parts,
-		}, nil
-	}
-
-	hashedParts, err := hashFileParts(inFilename, chunkSize, chunksInPart)
-
+	// First, we'll calculate the SinglePartUpload version of this
+	u, err := singlePartUpload(input, output, gzip, chunkSize)
 	if err != nil {
-		return multiPartUpload{}, err
+		return upload{}, err
 	}
 
-	return multiPartUpload{
-		Filename:        inFilename,
-		Sha256:          hashedParts.Sha256,
-		Size:            hashedParts.Size,
-		TransferSha256:  hashedParts.Sha256,
-		TransferSize:    hashedParts.Size,
-		ContentEncoding: "identity",
-		Parts:           hashedParts.Parts,
-	}, nil
+	// After we've written single part file over to the new file, we need to seek
+	// back to the start so we can break it up into hash chunks
+	if _, err := output.Seek(0, io.SeekStart); err != nil {
+		return upload{}, err
+	}
+
+	parts, hash, err := hashFileParts(output, u.TransferSize, chunkSize, chunksInPart)
+	if err != nil {
+		return upload{}, err
+	}
+
+	// We want to protect against the file changing between when we copied it to the new location
+	if !bytes.Equal(hash, u.TransferSha256) {
+		return upload{}, errors.New("file changed while determining part information")
+	}
+
+	u.Parts = parts
+	return u, nil
 }

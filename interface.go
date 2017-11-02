@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"regexp"
 	"time"
 
@@ -55,144 +54,61 @@ const MultiPartSize int64 = 500 * 1024 * 1024 // 500MB
 // single multi-part part.
 const MultiPartPartChunkCount int = 100 * 1024 * 1024 / ChunkSize // 100MB
 
-// Upload an artifact and let this library decide whether or not to use the
-// single part or multi part upload flow
-func (a *Client) Upload(taskID, runID, name, filename string, gzip bool, q *queue.Queue) error {
-	fi, err := os.Stat(filename)
-	if err != nil {
-		return err
+// Perform an upload
+func (c *Client) Upload(taskID, runID, name string, input io.ReadSeeker, output io.ReadWriteSeeker, gzip, multipart bool, q *queue.Queue) error {
+
+	var err error
+	var u upload
+
+	if multipart {
+		u, err = multiPartUpload(input, output, gzip, ChunkSize, MultiPartPartChunkCount)
+		if err != nil {
+			return err
+		}
+	} else {
+		u, err = singlePartUpload(input, output, gzip, ChunkSize)
+		if err != nil {
+			return err
+		}
 	}
 
-	if fi.Size() > 500*1024*1024 {
-		logger.Printf("File %s is %d bytes, choosing multi-part upload", filename, fi.Size())
-		return a.MultiPartUpload(taskID, runID, name, filename, gzip, q)
-	}
-
-	logger.Printf("File %s is %d bytes, choosing single part upload", filename, fi.Size())
-	return a.SinglePartUpload(taskID, runID, name, filename, gzip, q)
-}
-
-// SinglePartUpload performs a single part upload
-func (c *Client) SinglePartUpload(taskID, runID, name, filename string, gzip bool, q *queue.Queue) error {
-	spu, err := newSinglePartUpload(filename, "lala", ChunkSize, gzip)
-	if err != nil {
-		return err
-	}
-
-	cap, err := json.Marshal(&queue.BlobArtifactRequest{
-		ContentEncoding: spu.ContentEncoding,
-		ContentLength:   spu.Size,
-		ContentSha256:   fmt.Sprintf("%x", spu.Sha256),
-		TransferLength:  spu.TransferSize,
-		TransferSha256:  fmt.Sprintf("%x", spu.TransferSha256),
+	bareq := &queue.BlobArtifactRequest{
+		ContentEncoding: u.ContentEncoding,
+		ContentLength:   u.Size,
+		ContentSha256:   fmt.Sprintf("%x", u.Sha256),
+		TransferLength:  u.TransferSize,
+		TransferSha256:  fmt.Sprintf("%x", u.TransferSha256),
 		ContentType:     "application/octet-stream",
 		Expires:         tcclient.Time(time.Now().UTC().AddDate(0, 0, 1)),
 		StorageType:     "blob",
-	})
-	if err != nil {
-		return err
 	}
 
-	par := queue.PostArtifactRequest(json.RawMessage(cap))
-
-	resp, err := q.CreateArtifact(taskID, runID, name, &par)
-	if err != nil {
-		return err
-	}
-
-	var bar blobArtifactResponse
-
-	err = json.Unmarshal(*resp, &bar)
-	if err != nil {
-		return err
-	}
-
-	etags := make([]string, len(bar.Requests))
-
-	for i := 0; i < len(bar.Requests); i++ {
-		r := bar.Requests[i]
-		req, err := newRequestFromStringMap(r.URL, r.Method, r.Headers)
-		if err != nil {
-			return err
+	if multipart {
+		// We don't match the API's structure exactly, so let's do that
+		parts := make([]struct {
+			Sha256 string "json:\"sha256,omitempty\""
+			Size   int64  "json:\"size,omitempty\""
+		}, len(u.Parts))
+		for i := 0; i < len(u.Parts); i++ {
+			parts[i].Sha256 = fmt.Sprintf("%x", u.Parts[i].Sha256)
+			parts[i].Size = u.Parts[i].Size
 		}
-
-		bodyFile, err := os.Open(spu.Filename)
-		if err != nil {
-			return err
-		}
-		defer bodyFile.Close()
-
-		body, err := newBody(bodyFile, 0, spu.Size)
-		if err != nil {
-			return err
-		}
-
-		var outputBuf bytes.Buffer
-
-		cs, _, err := c.agent.run(req, body, ChunkSize, &outputBuf, false)
-		if err != nil {
-			logger.Printf("%s\n%s", cs, outputBuf.String())
-			return err
-		}
-		outputBuf.Reset()
-
-		etags[i] = cs.ResponseHeader.Get("etag")
+		bareq.Parts = parts
 	}
 
-	car := queue.CompleteArtifactRequest{
-		Etags: etags,
-	}
-
-	err = q.CompleteArtifact(taskID, runID, name, &car)
+	cap, err := json.Marshal(&bareq)
 	if err != nil {
 		return err
 	}
 
-	logger.Printf("Etags: %#v", etags)
-	return nil
-}
+	pareq := queue.PostArtifactRequest(json.RawMessage(cap))
 
-// MultiPartUpload performs a multi part upload
-func (c *Client) MultiPartUpload(taskID, runID, name, filename string, gzip bool, q *queue.Queue) error {
-	// TODO: remove this lala crap
-	mpu, err := newMultiPartUpload(filename, "lala", ChunkSize, MultiPartPartChunkCount, gzip)
+	resp, err := q.CreateArtifact(taskID, runID, name, &pareq)
 	if err != nil {
 		return err
 	}
 
-	// We don't match the API's structure exactly, so let's do that
-	parts := make([]struct {
-		Sha256 string "json:\"sha256,omitempty\""
-		Size   int64  "json:\"size,omitempty\""
-	}, len(mpu.Parts))
-	for i := 0; i < len(mpu.Parts); i++ {
-		parts[i].Sha256 = fmt.Sprintf("%x", mpu.Parts[i].Sha256)
-		parts[i].Size = mpu.Parts[i].Size
-	}
-
-	cap, err := json.Marshal(&queue.BlobArtifactRequest{
-		ContentEncoding: mpu.ContentEncoding,
-		ContentLength:   mpu.Size,
-		ContentSha256:   fmt.Sprintf("%x", mpu.Sha256),
-		TransferLength:  mpu.TransferSize,
-		TransferSha256:  fmt.Sprintf("%x", mpu.TransferSha256),
-		ContentType:     "application/octet-stream",
-		Expires:         tcclient.Time(time.Now().UTC().AddDate(0, 0, 1)),
-		StorageType:     "blob",
-		Parts:           parts,
-	})
-	if err != nil {
-		return err
-	}
-
-	par := queue.PostArtifactRequest(json.RawMessage(cap))
-
-	resp, err := q.CreateArtifact(taskID, runID, name, &par)
-	if err != nil {
-		return err
-	}
-
-	var bar blobArtifactResponse
+	var bares blobArtifactResponse
 
 	// BEGIN HACK
 	// TODO There's a slight hack required here because the queue is currently
@@ -203,35 +119,47 @@ func (c *Client) MultiPartUpload(taskID, runID, name, filename string, gzip bool
 	// really do need #220 to land before deploying this
 	clpat := regexp.MustCompile("\"content-length\"[[:space:]]*:[[:space:]]*(\\d*)")
 	fixed := clpat.ReplaceAll(*resp, []byte("\"content-length\": \"$1\""))
-	err = json.Unmarshal(fixed, &bar)
+	err = json.Unmarshal(fixed, &bares)
 	// END HACK
-	//err = json.Unmarshal(*resp, &bar)
+	//err = json.Unmarshal(*resp, &bares)
 	if err != nil {
 		return err
 	}
 
-	etags := make([]string, len(bar.Requests))
+	etags := make([]string, len(bares.Requests))
 
-	for i := 0; i < len(bar.Requests); i++ {
-		r := bar.Requests[i]
+	// There's a bit of a difficulty that's going to happen when we start supporting
+	// concurrency here.  The underlying ReadSeekCloser is going to be changing
+	// the position in the stream for the other readers.  We're going to have to
+	// figure out something to prevent the file from being read from totally
+	// random places.  To support this concurrency without passing files (e.g.
+	// using ReadSeekClosers) we could do something like the following:
+	//   1. Create a mutex for file reads
+	//   2. Each read to the file will lock the mutex
+	//   3. Each read to the file will seek to the correct position
+	//   4. Each read to the file will read the number of bytes needed
+	//   5. Each reader of the file will keep track of the next place it needs to
+	//      read from (e.g. where it seek'ed to + the number of bytes that it read)
+	//   6. Each read to the file will unlock the mutex
+	// Another option would be to pass in a factory method instead of raw
+	// ReadSeekClosers and have the factory return a ReadSeekCloser for each
+	// request body.  Maybe we really need a ReaderAtSeekCloser...
+	for i := 0; i < len(bares.Requests); i++ {
+		r := bares.Requests[i]
 		req, err := newRequestFromStringMap(r.URL, r.Method, r.Headers)
 		if err != nil {
 			return err
 		}
 
-		bodyFile, err := os.Open(mpu.Filename)
-		if err != nil {
-			return err
-		}
-		defer bodyFile.Close()
-
-		body, err := newBody(bodyFile, mpu.Parts[i].Start, mpu.Parts[i].Size)
+		body, err := newBody(input, u.Parts[i].Start, u.Parts[i].Size)
 		if err != nil {
 			return err
 		}
 
+		// In this case, we're going to store the output of the request in memory
+		// because we're pretty sure in this method that it's going to be an S3
+		// error message and we'd like to print that
 		var outputBuf bytes.Buffer
-
 		cs, _, err := c.agent.run(req, body, ChunkSize, &outputBuf, false)
 		if err != nil {
 			logger.Printf("%s\n%s", cs, outputBuf.String())
@@ -242,11 +170,11 @@ func (c *Client) MultiPartUpload(taskID, runID, name, filename string, gzip bool
 		etags[i] = cs.ResponseHeader.Get("etag")
 	}
 
-	car := queue.CompleteArtifactRequest{
+	careq := queue.CompleteArtifactRequest{
 		Etags: etags,
 	}
 
-	err = q.CompleteArtifact(taskID, runID, name, &car)
+	err = q.CompleteArtifact(taskID, runID, name, &careq)
 	if err != nil {
 		return err
 	}
