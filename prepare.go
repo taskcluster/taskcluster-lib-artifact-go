@@ -162,7 +162,10 @@ func singlePartUpload(input io.ReadSeeker, output io.Writer, gzip bool, chunkSiz
 
 		// We need to close the gzip writer in order to get the Gzip footer.  Note
 		// that this does not close the output ReadSeekCloser that we passed in
-		gzipWriter.Close()
+		err = gzipWriter.Close()
+		if err != nil {
+			return upload{}, err
+		}
 
 		return upload{
 			Sha256:          hash.Sum(nil),

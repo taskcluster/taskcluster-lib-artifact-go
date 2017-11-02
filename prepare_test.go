@@ -4,23 +4,25 @@ import (
 	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
+	"io"
+	"io/ioutil"
 	"os"
 	"testing"
 )
 
-func testMPUpload(t *testing.T, upload multiPartUpload) {
+func testMPUpload(t *testing.T, filename string, u upload) {
 	overallHash := sha256.New()
 	hash := sha256.New()
 
 	var totalBytes int64
 
-	for _, part := range upload.Parts {
+	for i, part := range u.Parts {
 		hash.Reset()
 
 		// Inefficient, but this is but a test, so meh
 		buf := make([]byte, part.Size)
 
-		bodyFile, err := os.Open(upload.Filename)
+		bodyFile, err := os.Open(filename)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -33,7 +35,7 @@ func testMPUpload(t *testing.T, upload multiPartUpload) {
 		defer body.Close()
 
 		nBytes, err := body.Read(buf)
-		if err != nil {
+		if err != nil && err != io.EOF {
 			t.Fatal(err)
 		}
 
@@ -42,34 +44,35 @@ func testMPUpload(t *testing.T, upload multiPartUpload) {
 
 		totalBytes += int64(nBytes)
 
-		if !bytes.Equal(hash.Sum(nil), part.Sha256) {
-			t.Fatalf("Checksum mismatch (part): %x != %x\n", hash.Sum(nil), part.Sha256)
-		}
 		if int64(nBytes) != part.Size {
-			t.Fatalf("Size mismatch (part): %d != %d\n", nBytes, part.Size)
+			t.Errorf("Size mismatch (part %d): %d != %d\n", i, nBytes, part.Size)
+		}
+
+		if !bytes.Equal(hash.Sum(nil), part.Sha256) {
+			t.Errorf("Checksum mismatch (part %d): %x != %x\n", i, hash.Sum(nil), part.Sha256)
 		}
 	}
 
-	if !bytes.Equal(overallHash.Sum(nil), upload.TransferSha256) {
-		t.Fatalf("Checksum mismatch: %x != %x\n", overallHash.Sum(nil), upload.TransferSha256)
+	if totalBytes != u.TransferSize {
+		t.Errorf("Size mismatch: %d != %d\n", totalBytes, u.TransferSize)
 	}
-	if totalBytes != upload.TransferSize {
-		t.Fatalf("Size mismatch: %d != %d\n", totalBytes, upload.TransferSize)
+	if !bytes.Equal(overallHash.Sum(nil), u.TransferSha256) {
+		t.Errorf("Checksum mismatch: %x != %x\n", overallHash.Sum(nil), u.TransferSha256)
 	}
 }
 
-func testSPUpload(t *testing.T, upload singlePartUpload) {
+func testSPUpload(t *testing.T, filename string, u upload) {
 	hash := sha256.New()
 
-	buf := make([]byte, upload.TransferSize)
+	buf := make([]byte, u.TransferSize)
 
-	bodyFile, err := os.Open(upload.Filename)
+	bodyFile, err := os.Open(filename)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer bodyFile.Close()
 
-	body, err := newBody(bodyFile, 0, upload.TransferSize)
+	body, err := newBody(bodyFile, 0, u.TransferSize)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,11 +85,11 @@ func testSPUpload(t *testing.T, upload singlePartUpload) {
 
 	hash.Write(buf[:nBytes])
 
-	if !bytes.Equal(hash.Sum(nil), upload.TransferSha256) {
-		t.Fatalf("Checksum mismatch: %x != %x\n", hash.Sum(nil), upload.TransferSha256)
+	if int64(nBytes) != u.TransferSize {
+		t.Errorf("Size mismatch: %d != %d\n", nBytes, u.TransferSize)
 	}
-	if int64(nBytes) != upload.TransferSize {
-		t.Fatalf("Size mismatch: %d != %d\n", nBytes, upload.TransferSize)
+	if !bytes.Equal(hash.Sum(nil), u.TransferSha256) {
+		t.Errorf("Checksum mismatch: %x != %x\n", hash.Sum(nil), u.TransferSha256)
 	}
 }
 
@@ -118,41 +121,89 @@ func TestUploadPreperation(t *testing.T) {
 	t.Run("multipart gzip", func(t *testing.T) {
 		chunkSize := 128 * 1024
 		chunksInPart := 5 * 1024 * 1024 / chunkSize
-		upload, err := newMultiPartUpload(filename, filename+".gz", chunkSize, chunksInPart, true)
+		input, err := os.Open(filename)
 		if err != nil {
 			t.Fatal(err)
 		}
-		testMPUpload(t, upload)
+		defer input.Close()
+		output, err := ioutil.TempFile("test-files", "mp-gz_")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer os.Remove(output.Name())
+
+		upload, err := multiPartUpload(input, output, true, chunkSize, chunksInPart)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		testMPUpload(t, filename, upload)
 	})
 
 	t.Run("multipart identity", func(t *testing.T) {
 		chunkSize := 128 * 1024
 		chunksInPart := 5 * 1024 * 1024 / chunkSize
-		upload, err := newMultiPartUpload(filename, filename+".gz", chunkSize, chunksInPart, false)
+		input, err := os.Open(filename)
 		if err != nil {
 			t.Fatal(err)
 		}
-		testMPUpload(t, upload)
+		defer input.Close()
+		output, err := ioutil.TempFile("test-files", "mp-id_")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer os.Remove(output.Name())
+
+		upload, err := multiPartUpload(input, output, false, chunkSize, chunksInPart)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		testMPUpload(t, filename, upload)
 	})
 
 	t.Run("singlepart gzip", func(t *testing.T) {
 		chunkSize := 128 * 1024
-		upload, err := newSinglePartUpload(filename, filename+".gz", chunkSize, true)
+		input, err := os.Open(filename)
 		if err != nil {
 			t.Fatal(err)
 		}
-		testSPUpload(t, upload)
+		defer input.Close()
+		output, err := ioutil.TempFile("test-files", "sp-gz_")
+		// TODO REMOVE THIS
+		t.Log(output.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		// TODO UNCOMMENT THIS DEFER
+		//defer os.Remove(output.Name())
+
+		upload, err := singlePartUpload(input, output, true, chunkSize)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		testSPUpload(t, filename, upload)
 	})
 
 	t.Run("singlepart identity", func(t *testing.T) {
 		chunkSize := 128 * 1024
-		upload, err := newSinglePartUpload(filename, filename+".gz", chunkSize, false)
+		input, err := os.Open(filename)
 		if err != nil {
 			t.Fatal(err)
 		}
-		testSPUpload(t, upload)
-	})
+		defer input.Close()
+		output, err := ioutil.TempFile("test-files", "sp-id_")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer os.Remove(output.Name())
 
-	// Now let's run the tests
-	// ...
+		upload, err := singlePartUpload(input, output, false, chunkSize)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		testSPUpload(t, filename, upload)
+	})
 }
