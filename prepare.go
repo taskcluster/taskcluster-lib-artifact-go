@@ -140,6 +140,7 @@ func singlePartUpload(input io.ReadSeeker, output io.Writer, gzip bool, chunkSiz
 
 	hash := sha256.New()
 	buf := make([]byte, chunkSize)
+	size := byteCountingWriter{0}
 
 	// When we're compressing using gzip, we're going to use a more complex copy routine
 	if gzip {
@@ -152,16 +153,19 @@ func singlePartUpload(input io.ReadSeeker, output io.Writer, gzip bool, chunkSiz
 		// We're setting constant headers so that gzip has deterministic output
 		gzipWriter.ModTime = time.Date(2000, time.January, 0, 0, 0, 0, 0, time.UTC)
 
-		_output := io.MultiWriter(gzipWriter, hash)
+		_output := io.MultiWriter(gzipWriter, hash, &size)
 
-		totalBytes, err := io.CopyBuffer(_output, input, buf)
-
+		_, err := io.CopyBuffer(_output, input, buf)
 		if err != nil {
 			return upload{}, err
 		}
 
 		// We need to close the gzip writer in order to get the Gzip footer.  Note
 		// that this does not close the output ReadSeekCloser that we passed in
+		err = gzipWriter.Flush()
+		if err != nil {
+			return upload{}, err
+		}
 		err = gzipWriter.Close()
 		if err != nil {
 			return upload{}, err
@@ -169,7 +173,7 @@ func singlePartUpload(input io.ReadSeeker, output io.Writer, gzip bool, chunkSiz
 
 		return upload{
 			Sha256:          hash.Sum(nil),
-			Size:            totalBytes,
+			Size:            size.count,
 			TransferSha256:  transferHash.Sum(nil),
 			TransferSize:    transferSize.count,
 			ContentEncoding: "gzip",

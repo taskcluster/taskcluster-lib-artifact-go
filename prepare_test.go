@@ -61,35 +61,92 @@ func testMPUpload(t *testing.T, filename string, u upload) {
 	}
 }
 
-func testSPUpload(t *testing.T, filename string, u upload) {
+func fileinfo(t *testing.T, filename string) (int64, []byte) {
+	f, err := os.Open(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+
 	hash := sha256.New()
 
-	buf := make([]byte, u.TransferSize)
-
-	bodyFile, err := os.Open(filename)
+	nBytes, err := io.Copy(hash, f)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer bodyFile.Close()
+	return nBytes, hash.Sum(nil)
+}
 
-	body, err := newBody(bodyFile, 0, u.TransferSize)
+func testUpload(t *testing.T, gzip bool, mp bool, filename string) {
+	chunkSize := 128 * 1024
+
+	input, err := os.Open(filename)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer body.Close()
+	defer input.Close()
 
-	nBytes, err := body.Read(buf)
+	output, err := ioutil.TempFile("test-files", "sp-gz_")
+
+	t.Log(output.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	//defer os.Remove(output.Name())
+
+	u, err := singlePartUpload(input, output, gzip, chunkSize)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	hash.Write(buf[:nBytes])
-
-	if int64(nBytes) != u.TransferSize {
-		t.Errorf("Size mismatch: %d != %d\n", nBytes, u.TransferSize)
+	if err := output.Close(); err != nil {
+		t.Fatal(err)
 	}
-	if !bytes.Equal(hash.Sum(nil), u.TransferSha256) {
-		t.Errorf("Checksum mismatch: %x != %x\n", hash.Sum(nil), u.TransferSha256)
+
+	inputSize, inputHash := fileinfo(t, filename)
+	outputSize, outputHash := fileinfo(t, output.Name())
+
+	if gzip && u.ContentEncoding != "gzip" {
+		t.Errorf("Incorrect content encoding: %s", u.ContentEncoding)
+	}
+
+	if !gzip && u.ContentEncoding != "identity" {
+		t.Errorf("Incorrect content encoding: %s", u.ContentEncoding)
+	}
+
+	if inputSize != u.Size {
+		t.Errorf("Input size %d did not match prepared size %d", inputSize, u.Size)
+	}
+
+	if outputSize != u.TransferSize {
+		t.Errorf("Input size %d did not match prepared size %d", outputSize, u.TransferSize)
+	}
+
+	if !bytes.Equal(inputHash, u.Sha256) {
+		t.Errorf("Input sha256 %x did not match prepared sha256 %x", inputHash, u.Sha256)
+	}
+
+	if !bytes.Equal(outputHash, u.TransferSha256) {
+		t.Errorf("Output sha256 %x did not match prepared sha256 %x", outputHash, u.Sha256)
+	}
+
+	if mp {
+		for i, part := range u.Parts {
+			phash := sha256.New()
+			reader := io.NewSectionReader(input, part.Start, part.Size)
+			partBytes, err := io.Copy(phash, reader)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if part.Size != partBytes {
+				t.Errorf("Part %d size %d did not match prepared size %d", i, partBytes, part.Size)
+			}
+
+			if !bytes.Equal(phash.Sum(nil), part.Sha256) {
+				t.Errorf("Part %d sha256 %d did not match prepared sha256 %d", i, phash.Sum(nil), part.Sha256)
+			}
+
+		}
 	}
 }
 
@@ -119,91 +176,18 @@ func TestUploadPreperation(t *testing.T) {
 	}
 
 	t.Run("multipart gzip", func(t *testing.T) {
-		chunkSize := 128 * 1024
-		chunksInPart := 5 * 1024 * 1024 / chunkSize
-		input, err := os.Open(filename)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer input.Close()
-		output, err := ioutil.TempFile("test-files", "mp-gz_")
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer os.Remove(output.Name())
-
-		upload, err := multiPartUpload(input, output, true, chunkSize, chunksInPart)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		testMPUpload(t, filename, upload)
+		testUpload(t, true, true, filename)
 	})
 
 	t.Run("multipart identity", func(t *testing.T) {
-		chunkSize := 128 * 1024
-		chunksInPart := 5 * 1024 * 1024 / chunkSize
-		input, err := os.Open(filename)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer input.Close()
-		output, err := ioutil.TempFile("test-files", "mp-id_")
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer os.Remove(output.Name())
-
-		upload, err := multiPartUpload(input, output, false, chunkSize, chunksInPart)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		testMPUpload(t, filename, upload)
+		testUpload(t, false, true, filename)
 	})
 
 	t.Run("singlepart gzip", func(t *testing.T) {
-		chunkSize := 128 * 1024
-		input, err := os.Open(filename)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer input.Close()
-		output, err := ioutil.TempFile("test-files", "sp-gz_")
-		// TODO REMOVE THIS
-		t.Log(output.Name())
-		if err != nil {
-			t.Fatal(err)
-		}
-		// TODO UNCOMMENT THIS DEFER
-		//defer os.Remove(output.Name())
-
-		upload, err := singlePartUpload(input, output, true, chunkSize)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		testSPUpload(t, filename, upload)
+		testUpload(t, true, false, filename)
 	})
 
 	t.Run("singlepart identity", func(t *testing.T) {
-		chunkSize := 128 * 1024
-		input, err := os.Open(filename)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer input.Close()
-		output, err := ioutil.TempFile("test-files", "sp-id_")
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer os.Remove(output.Name())
-
-		upload, err := singlePartUpload(input, output, false, chunkSize)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		testSPUpload(t, filename, upload)
+		testUpload(t, false, false, filename)
 	})
 }
