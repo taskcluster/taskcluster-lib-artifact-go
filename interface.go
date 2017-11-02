@@ -116,7 +116,13 @@ func (c *Client) SinglePartUpload(taskID, runID, name, filename string, gzip boo
 			return err
 		}
 
-		body, err := newBody(spu.Filename, 0, spu.Size)
+		bodyFile, err := os.Open(spu.Filename)
+		if err != nil {
+			return err
+		}
+		defer bodyFile.Close()
+
+		body, err := newBody(bodyFile, 0, spu.Size)
 		if err != nil {
 			return err
 		}
@@ -213,7 +219,13 @@ func (c *Client) MultiPartUpload(taskID, runID, name, filename string, gzip bool
 			return err
 		}
 
-		body, err := newBody(mpu.Filename, mpu.Parts[i].Start, mpu.Parts[i].Size)
+		bodyFile, err := os.Open(mpu.Filename)
+		if err != nil {
+			return err
+		}
+		defer bodyFile.Close()
+
+		body, err := newBody(bodyFile, mpu.Parts[i].Start, mpu.Parts[i].Size)
 		if err != nil {
 			return err
 		}

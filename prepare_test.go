@@ -20,15 +20,21 @@ func testMPUpload(t *testing.T, upload multiPartUpload) {
 		// Inefficient, but this is but a test, so meh
 		buf := make([]byte, part.Size)
 
-		body, err := newBody(upload.Filename, part.Start, part.Size)
+		bodyFile, err := os.Open(upload.Filename)
 		if err != nil {
-			t.Error(err)
+			t.Fatal(err)
+		}
+		defer bodyFile.Close()
+
+		body, err := newBody(bodyFile, part.Start, part.Size)
+		if err != nil {
+			t.Fatal(err)
 		}
 		defer body.Close()
 
 		nBytes, err := body.Read(buf)
 		if err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
 
 		hash.Write(buf[:nBytes])
@@ -37,18 +43,18 @@ func testMPUpload(t *testing.T, upload multiPartUpload) {
 		totalBytes += int64(nBytes)
 
 		if !bytes.Equal(hash.Sum(nil), part.Sha256) {
-			t.Errorf("Checksum mismatch (part): %x != %x\n", hash.Sum(nil), part.Sha256)
+			t.Fatalf("Checksum mismatch (part): %x != %x\n", hash.Sum(nil), part.Sha256)
 		}
 		if int64(nBytes) != part.Size {
-			t.Errorf("Size mismatch (part): %d != %d\n", nBytes, part.Size)
+			t.Fatalf("Size mismatch (part): %d != %d\n", nBytes, part.Size)
 		}
 	}
 
 	if !bytes.Equal(overallHash.Sum(nil), upload.TransferSha256) {
-		t.Errorf("Checksum mismatch: %x != %x\n", overallHash.Sum(nil), upload.TransferSha256)
+		t.Fatalf("Checksum mismatch: %x != %x\n", overallHash.Sum(nil), upload.TransferSha256)
 	}
 	if totalBytes != upload.TransferSize {
-		t.Errorf("Size mismatch: %d != %d\n", totalBytes, upload.TransferSize)
+		t.Fatalf("Size mismatch: %d != %d\n", totalBytes, upload.TransferSize)
 	}
 }
 
@@ -57,24 +63,30 @@ func testSPUpload(t *testing.T, upload singlePartUpload) {
 
 	buf := make([]byte, upload.TransferSize)
 
-	body, err := newBody(upload.Filename, 0, upload.TransferSize)
+	bodyFile, err := os.Open(upload.Filename)
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
+	}
+	defer bodyFile.Close()
+
+	body, err := newBody(bodyFile, 0, upload.TransferSize)
+	if err != nil {
+		t.Fatal(err)
 	}
 	defer body.Close()
 
 	nBytes, err := body.Read(buf)
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 
 	hash.Write(buf[:nBytes])
 
 	if !bytes.Equal(hash.Sum(nil), upload.TransferSha256) {
-		t.Errorf("Checksum mismatch: %x != %x\n", hash.Sum(nil), upload.TransferSha256)
+		t.Fatalf("Checksum mismatch: %x != %x\n", hash.Sum(nil), upload.TransferSha256)
 	}
 	if int64(nBytes) != upload.TransferSize {
-		t.Errorf("Size mismatch: %d != %d\n", nBytes, upload.TransferSize)
+		t.Fatalf("Size mismatch: %d != %d\n", nBytes, upload.TransferSize)
 	}
 }
 
@@ -89,14 +101,14 @@ func TestUploadPreperation(t *testing.T) {
 		t.Log("input data did not exist or was wrong size, recreating")
 		of, err := os.Create(filename)
 		if err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
 		for i := 0; i < 10*1024; i++ {
 			c := 1024
 			b := make([]byte, c)
 			_, err := rand.Read(b)
 			if err != nil {
-				t.Error(err)
+				t.Fatal(err)
 			}
 			of.Write(b)
 		}
@@ -108,7 +120,7 @@ func TestUploadPreperation(t *testing.T) {
 		chunksInPart := 5 * 1024 * 1024 / chunkSize
 		upload, err := newMultiPartUpload(filename, filename+".gz", chunkSize, chunksInPart, true)
 		if err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
 		testMPUpload(t, upload)
 	})
@@ -118,7 +130,7 @@ func TestUploadPreperation(t *testing.T) {
 		chunksInPart := 5 * 1024 * 1024 / chunkSize
 		upload, err := newMultiPartUpload(filename, filename+".gz", chunkSize, chunksInPart, false)
 		if err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
 		testMPUpload(t, upload)
 	})
@@ -127,7 +139,7 @@ func TestUploadPreperation(t *testing.T) {
 		chunkSize := 128 * 1024
 		upload, err := newSinglePartUpload(filename, filename+".gz", chunkSize, true)
 		if err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
 		testSPUpload(t, upload)
 	})
@@ -136,7 +148,7 @@ func TestUploadPreperation(t *testing.T) {
 		chunkSize := 128 * 1024
 		upload, err := newSinglePartUpload(filename, filename+".gz", chunkSize, false)
 		if err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
 		testSPUpload(t, upload)
 	})

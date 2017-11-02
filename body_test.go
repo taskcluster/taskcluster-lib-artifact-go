@@ -46,31 +46,37 @@ func prepareFiles() error {
 	return nil
 }
 
+func openFile(t *testing.T, filename string) ReadSeekCloser {
+	inputFile, err := os.Open(filename)
+
+	if os.IsNotExist(err) {
+		t.Fatalf("File %s is not fount", filename)
+	}
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return inputFile
+
+}
+
 func TestBodyReading(t *testing.T) {
 
 	SetLogOutput(newUnitTestLogWriter(t))
 
 	prepareFiles()
 
-	t.Run("should return error if file doesn't exist", func(t *testing.T) {
-		_, err := newBody("file", 128, 128)
-		if !os.IsNotExist(err) {
-			t.Fatal(err)
-		}
-	})
-
 	t.Run("should return error if size is zero", func(t *testing.T) {
-		_, err := newBody(filename, 128, 0)
-		if os.IsNotExist(err) {
-			t.Fatal(err)
-		} else if err == nil {
+		_, err := newBody(openFile(t, filename), 128, 0)
+		if err == nil {
 			t.Fatal("Expected an error")
 		}
 
 	})
 
 	t.Run("should read a complete 2048 byte file", func(t *testing.T) {
-		body, err := newBody(filename, 0, 2048)
+		body, err := newBody(openFile(t, filename), 0, 2048)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -93,7 +99,7 @@ func TestBodyReading(t *testing.T) {
 	})
 
 	t.Run("should read first 1024 bytes of a 2048 byte file", func(t *testing.T) {
-		body, err := newBody(filename, 0, 1024)
+		body, err := newBody(openFile(t, filename), 0, 1024)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -116,7 +122,7 @@ func TestBodyReading(t *testing.T) {
 	})
 
 	t.Run("should read second 1024 bytes of a 2048 byte file", func(t *testing.T) {
-		body, err := newBody(filename, 1024, 1024)
+		body, err := newBody(openFile(t, filename), 1024, 1024)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -139,7 +145,7 @@ func TestBodyReading(t *testing.T) {
 	})
 
 	t.Run("should read middle 1024 bytes of a 2048 byte file", func(t *testing.T) {
-		body, err := newBody(filename, 512, 1024)
+		body, err := newBody(openFile(t, filename), 512, 1024)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -166,7 +172,7 @@ func TestBodyReading(t *testing.T) {
 		// more than a single byte if things go wrong.
 		buf := make([]byte, 2)
 
-		body, err := newBody(filename2, 3, 1)
+		body, err := newBody(openFile(t, filename2), 3, 1)
 		defer body.Close()
 		if err != nil {
 			t.Fatal(err)

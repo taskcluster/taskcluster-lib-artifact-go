@@ -82,14 +82,14 @@ func TestRequestRunning(t *testing.T) {
 		t.Log("input data did not exist or was wrong size, recreating")
 		of, err := os.Create(filename)
 		if err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
 		for i := 0; i < 10*1024; i++ {
 			c := 1024
 			b := make([]byte, c)
 			_, err := rand.Read(b)
 			if err != nil {
-				t.Error(err)
+				t.Fatal(err)
 			}
 			of.Write(b)
 		}
@@ -120,20 +120,25 @@ func TestRequestRunning(t *testing.T) {
 			var buf bytes.Buffer
 			_, err := io.Copy(&buf, r.Body)
 			if err != nil {
-				t.Error(err)
+				t.Fatal(err)
 			}
 
 			if !bytes.Equal(buf.Bytes(), body) {
-				t.Errorf("Request body not as expected. %d bytes vs expected %d", buf.Len(), len(body))
+				t.Fatalf("Request body not as expected. %d bytes vs expected %d", buf.Len(), len(body))
 			}
 		}))
 		defer ts.Close()
 
 		req := newRequest(ts.URL, "PUT", nil)
 
-		body, err := newBody(filename, 0, 10*1024*1024)
+		bodyFile, err := os.Open(filename)
 		if err != nil {
-			t.Error(err)
+			t.Fatal(err)
+		}
+
+		body, err := newBody(bodyFile, 0, 10*1024*1024)
+		if err != nil {
+			t.Fatal(err)
 		}
 		defer body.Close()
 
@@ -146,7 +151,7 @@ func TestRequestRunning(t *testing.T) {
 		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			_, err := io.Copy(w, bytes.NewBuffer(body))
 			if err != nil {
-				t.Error(err)
+				t.Fatal(err)
 			}
 		}))
 		defer ts.Close()
@@ -158,7 +163,7 @@ func TestRequestRunning(t *testing.T) {
 		_, _, err = client.run(req, nil, 1024, &output, false)
 
 		if !bytes.Equal(output.Bytes(), body) {
-			t.Errorf("Response output does not match expected value")
+			t.Fatalf("Response output does not match expected value")
 		}
 
 	})
@@ -172,7 +177,7 @@ func TestRequestRunning(t *testing.T) {
 				req := newRequest(ts.URL, "GET", nil)
 				_, _, err := client.run(req, nil, 1024, nil, true)
 				if err != nil {
-					t.Error(err)
+					t.Fatal(err)
 				}
 			})
 
@@ -185,7 +190,7 @@ func TestRequestRunning(t *testing.T) {
 				_, _, err := client.run(req, nil, 1024, nil, true)
 
 				if err != nil {
-					t.Error(err)
+					t.Fatal(err)
 				}
 			})
 
@@ -198,7 +203,7 @@ func TestRequestRunning(t *testing.T) {
 				_, _, err := client.run(req, nil, 1024, nil, true)
 
 				if err != nil {
-					t.Error(err)
+					t.Fatal(err)
 				}
 			})
 
@@ -211,7 +216,7 @@ func TestRequestRunning(t *testing.T) {
 				_, _, err := client.run(req, nil, 1024, nil, true)
 
 				if err == nil {
-					t.Error(err)
+					t.Fatal(err)
 				}
 			})
 
@@ -225,7 +230,7 @@ func TestRequestRunning(t *testing.T) {
 
 				// do better error checking that we got the expected error
 				if err == nil {
-					t.Error(err)
+					t.Fatal(err)
 				}
 			})
 
@@ -239,7 +244,7 @@ func TestRequestRunning(t *testing.T) {
 
 				// do better error checking that we got the expected error
 				if err == nil {
-					t.Error(err)
+					t.Fatal(err)
 				}
 			})
 		})
@@ -254,7 +259,7 @@ func TestRequestRunning(t *testing.T) {
 				_, _, err = client.run(req, nil, 1024, nil, true)
 
 				if err != nil {
-					t.Error(err)
+					t.Fatal(err)
 				}
 			})
 
@@ -268,7 +273,7 @@ func TestRequestRunning(t *testing.T) {
 				_, _, err = client.run(req, nil, 1024, nil, true)
 
 				if err == nil {
-					t.Error(err)
+					t.Fatal(err)
 				}
 			})
 
@@ -282,7 +287,7 @@ func TestRequestRunning(t *testing.T) {
 				_, _, err = client.run(req, nil, 1024, nil, true)
 
 				if err == nil {
-					t.Error(err)
+					t.Fatal(err)
 				}
 			})
 
@@ -296,7 +301,7 @@ func TestRequestRunning(t *testing.T) {
 				_, _, err = client.run(req, nil, 1024, nil, true)
 
 				if err == nil {
-					t.Error(err)
+					t.Fatal(err)
 				}
 			})
 		})
