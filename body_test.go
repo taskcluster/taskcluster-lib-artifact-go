@@ -2,6 +2,7 @@ package artifact
 
 import (
 	"bytes"
+	"io"
 	"io/ioutil"
 	"os"
 	"testing"
@@ -46,7 +47,7 @@ func prepareFiles() error {
 	return nil
 }
 
-func openFile(t *testing.T, filename string) ReadSeekCloser {
+func openFile(t *testing.T, filename string) io.ReadSeeker {
 	inputFile, err := os.Open(filename)
 
 	if os.IsNotExist(err) {

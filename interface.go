@@ -128,12 +128,12 @@ func (c *Client) Upload(taskID, runID, name string, input io.ReadSeeker, output 
 
 	etags := make([]string, len(bares.Requests))
 
-	// There's a bit of a difficulty that's going to happen when we start supporting
-	// concurrency here.  The underlying ReadSeekCloser is going to be changing
-	// the position in the stream for the other readers.  We're going to have to
-	// figure out something to prevent the file from being read from totally
-	// random places.  To support this concurrency without passing files (e.g.
-	// using ReadSeekClosers) we could do something like the following:
+	// There's a bit of a difficulty that's going to happen when we start
+	// supporting concurrency here.  The underlying ReadSeeker is going to be
+	// changing the position in the stream for the other readers.  We're going to
+	// have to figure out something to prevent the file from being read from
+	// totally random places.  To support this concurrency without passing files
+	// (e.g.  using ReadSeekers) we could do something like the following:
 	//   1. Create a mutex for file reads
 	//   2. Each read to the file will lock the mutex
 	//   3. Each read to the file will seek to the correct position
@@ -142,7 +142,7 @@ func (c *Client) Upload(taskID, runID, name string, input io.ReadSeeker, output 
 	//      read from (e.g. where it seek'ed to + the number of bytes that it read)
 	//   6. Each read to the file will unlock the mutex
 	// Another option would be to pass in a factory method instead of raw
-	// ReadSeekClosers and have the factory return a ReadSeekCloser for each
+	// ReadSeekers and have the factory return a ReadSeeker for each
 	// request body.  Maybe we really need a ReaderAtSeekCloser...
 	for i := 0; i < len(bares.Requests); i++ {
 		r := bares.Requests[i]
