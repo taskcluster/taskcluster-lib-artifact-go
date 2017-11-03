@@ -78,7 +78,7 @@ func prepareFiles(t *testing.T) []byte {
 			t.Fatal(err)
 		}
 		if nBytes != 1024*1024 {
-			t.Fatal("did not write the expected number of bytes(%d)", nBytes)
+			t.Fatalf("did not write the expected number of bytes(%d)", nBytes)
 		}
 	}
 	err = file.Close()
