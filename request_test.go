@@ -42,23 +42,6 @@ func createServer(sc int, cl, ch, tl, th, ce string, body []byte) *httptest.Serv
 	return ts
 }
 
-// Name is short for CompareBufferHashes.  This function hashes two different
-// buffers and returns true if they match, false if they differ
-func cbh(a, b []byte) bool {
-	aHash := sha256.New()
-	bHash := sha256.New()
-
-	// TODO: Verify if just calling the Sum() method with the buffer would be
-	// enough.  I suspect yes.
-	aHash.Write(a)
-	bHash.Write(b)
-
-	aSum := aHash.Sum(nil)
-	bSum := bHash.Sum(nil)
-
-	return bytes.Equal(aSum, bSum)
-}
-
 // Name is short for HashBuffer.
 func hb(a []byte) string {
 	hash := sha256.New()
@@ -118,6 +101,9 @@ func TestRequestRunning(t *testing.T) {
 	t.Run("writes request body correctly", func(t *testing.T) {
 
 		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+			w.Header().Set("Content-Length", "0")
+			w.WriteHeader(200)
 			var buf bytes.Buffer
 			_, err := io.Copy(&buf, r.Body)
 			if err != nil {
@@ -130,21 +116,49 @@ func TestRequestRunning(t *testing.T) {
 		}))
 		defer ts.Close()
 
-		req := newRequest(ts.URL, "PUT", nil)
+		// Maybe write a second test for th
 
-		bodyFile, err := os.Open(filename)
-		if err != nil {
-			t.Fatal(err)
-		}
+		t.Run("with content length header", func(t *testing.T) {
+			header := &http.Header{}
+			header.Set("Content-Length", strconv.Itoa(10*1024*1024))
+			req := newRequest(ts.URL, "PUT", header)
+			bodyFile, err := os.Open(filename)
+			if err != nil {
+				t.Fatal(err)
+			}
 
-		body, err := newBody(bodyFile, 0, 10*1024*1024)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer body.Close()
+			body, err := newBody(bodyFile, 0, 10*1024*1024)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer body.Close()
 
-		_, _, err = client.run(req, body, 1024, nil, false)
+			_, _, err = client.run(req, body, 1024, nil, false)
 
+			if err != nil {
+				t.Fatal(err)
+			}
+		})
+
+		t.Run("without content length header", func(t *testing.T) {
+			req := newRequest(ts.URL, "PUT", nil)
+			bodyFile, err := os.Open(filename)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			body, err := newBody(bodyFile, 0, 10*1024*1024)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer body.Close()
+
+			_, _, err = client.run(req, body, 1024, nil, false)
+
+			if err != nil {
+				t.Fatal(err)
+			}
+		})
 	})
 
 	t.Run("reads response body correctly", func(t *testing.T) {
@@ -157,7 +171,7 @@ func TestRequestRunning(t *testing.T) {
 		}))
 		defer ts.Close()
 
-		req := newRequest(ts.URL, "PUT", nil)
+		req := newRequest(ts.URL, "GET", nil)
 
 		var output bytes.Buffer
 
@@ -165,6 +179,10 @@ func TestRequestRunning(t *testing.T) {
 
 		if !bytes.Equal(output.Bytes(), body) {
 			t.Fatalf("Response output does not match expected value")
+		}
+
+		if err != nil {
+			t.Fatal(err)
 		}
 
 	})

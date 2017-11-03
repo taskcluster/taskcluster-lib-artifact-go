@@ -40,11 +40,7 @@ func prepareFiles() error {
 	}
 
 	err = file.Close()
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return err
 }
 
 func openFile(t *testing.T, filename string) io.ReadSeeker {
@@ -174,10 +170,11 @@ func TestBodyReading(t *testing.T) {
 		buf := make([]byte, 2)
 
 		body, err := newBody(openFile(t, filename2), 3, 1)
-		defer body.Close()
 		if err != nil {
 			t.Fatal(err)
 		}
+		defer body.Close()
+
 		nBytes, err := body.Read(buf)
 		if err != nil {
 			t.Fatal(err)

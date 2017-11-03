@@ -7,6 +7,7 @@ go get -u ./...
 go get -u github.com/robertkrimen/godocdown/godocdown
 go get -u github.com/golang/lint/golint
 go get -u github.com/alecthomas/gometalinter
+gometalinter --install > /dev/null
 
 echo Running Unit Tests
 go test ./...

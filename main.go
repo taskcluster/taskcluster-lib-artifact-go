@@ -1,5 +1,0 @@
-package artifact
-
-func main() {
-
-}

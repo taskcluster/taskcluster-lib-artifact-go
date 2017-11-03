@@ -176,13 +176,15 @@ func (c client) run(request request, inputReader io.Reader, chunkSize int, outpu
 	// them, so we should be safe to do the check this way.  If someone is going
 	// to set values inside the Header directly, then that's their problem.  They
 	// do expose a public canonicalization function
+	var contentLength int64
+	hadCL := false
 	if len(httpRequest.Header["Content-Length"]) > 0 {
-		var contentLength int64
 		if contentLength, err = strconv.ParseInt(request.Header.Get("Content-Length"), 10, 64); err != nil {
 			return cs, false, err
 		}
 
 		httpRequest.ContentLength = contentLength
+		hadCL = true
 	}
 
 	cs.RequestHeader = &httpRequest.Header
@@ -209,8 +211,8 @@ func (c client) run(request request, inputReader io.Reader, chunkSize int, outpu
 	// panic() call, however, in this case we know we're accessing big disks
 	// which are likely not even on the machine running this code.  Given that,
 	// let's instead treat this as local I/O corruption and mark it as retryable
-	if httpRequest.ContentLength != reqBodyCounter.count {
-		return cs, true, fmt.Errorf("read %d bytes when we should have read %d", reqBodyCounter.count, httpRequest.ContentLength)
+	if hadCL && httpRequest.ContentLength != reqBodyCounter.count {
+		return cs, true, fmt.Errorf("read %d bytes when we should have read %d", reqBodyCounter.count, contentLength)
 	}
 
 	// 500-series errors are always retryable
@@ -242,8 +244,7 @@ func (c client) run(request request, inputReader io.Reader, chunkSize int, outpu
 	// This io.Reader is a reference to the response body, after setting up all
 	// the required plumbing for doing transfer byte counting and hashing as well
 	// as any possible content-decoding
-	var input io.Reader
-	input = io.TeeReader(resp.Body, io.MultiWriter(transferHash, transferCounter))
+	input := io.TeeReader(resp.Body, io.MultiWriter(transferHash, transferCounter))
 
 	// We want to handle content encoding.  In this case, we only accept the
 	// header being unset (implies identity), 'indentity' or 'gzip'.  We do not
