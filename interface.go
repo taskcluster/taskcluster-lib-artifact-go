@@ -2,9 +2,9 @@ package artifact
 
 import (
 	"bytes"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -100,7 +100,7 @@ func (c *Client) Upload(taskID, runID, name string, input io.ReadSeeker, output 
 		return err
 	}
 	if outSize != 0 {
-		return fmt.Errorf("Output must be size 0, not %d bytes", outSize)
+		return ErrBadOutputWriter
 	}
 
 	// TODO: Decide if we should do this or let the caller figure out the content
@@ -137,9 +137,9 @@ func (c *Client) Upload(taskID, runID, name string, input io.ReadSeeker, output 
 	bareq := &queue.BlobArtifactRequest{
 		ContentEncoding: u.ContentEncoding,
 		ContentLength:   u.Size,
-		ContentSha256:   fmt.Sprintf("%x", u.Sha256),
+		ContentSha256:   hex.EncodeToString(u.Sha256),
 		TransferLength:  u.TransferSize,
-		TransferSha256:  fmt.Sprintf("%x", u.TransferSha256),
+		TransferSha256:  hex.EncodeToString(u.TransferSha256),
 		ContentType:     contentType,
 		Expires:         tcclient.Time(time.Now().UTC().AddDate(0, 0, 1)),
 		StorageType:     "blob",
@@ -152,7 +152,7 @@ func (c *Client) Upload(taskID, runID, name string, input io.ReadSeeker, output 
 			Size   int64  "json:\"size,omitempty\""
 		}, len(u.Parts))
 		for i := 0; i < len(u.Parts); i++ {
-			parts[i].Sha256 = fmt.Sprintf("%x", u.Parts[i].Sha256)
+			parts[i].Sha256 = hex.EncodeToString(u.Parts[i].Sha256)
 			parts[i].Size = u.Parts[i].Size
 		}
 		bareq.Parts = parts

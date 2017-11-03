@@ -5,12 +5,13 @@ import (
 	"compress/gzip"
 	"crypto/rand"
 	"crypto/sha256"
-	"fmt"
+	"encoding/hex"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"testing"
 )
 
@@ -62,12 +63,12 @@ func cbh(a, b []byte) bool {
 func hb(a []byte) string {
 	hash := sha256.New()
 	hash.Write(a)
-	return fmt.Sprintf("%x", hash.Sum(nil))
+	return hex.EncodeToString(hash.Sum(nil))
 }
 
 // Name is short for StringLength
 func sl(a []byte) string {
-	return fmt.Sprintf("%d", len(a))
+	return strconv.Itoa(len(a))
 }
 
 func TestRequestRunning(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -192,7 +193,7 @@ func (c client) run(request request, inputReader io.Reader, chunkSize int, outpu
 	// internal modifications back.  That'd be nice!
 	cs.RequestHeader = &httpRequest.Header
 	cs.RequestLength = reqBodyCounter.count
-	cs.RequestSha256 = fmt.Sprintf("%x", reqBodyHash.Sum(nil))
+	cs.RequestSha256 = hex.EncodeToString(reqBodyHash.Sum(nil))
 
 	cs.Status = resp.Status
 	cs.StatusCode = resp.StatusCode
@@ -291,8 +292,8 @@ func (c client) run(request request, inputReader io.Reader, chunkSize int, outpu
 
 	transferBytes := transferCounter.count
 	contentBytes := contentCounter.count
-	sContentHash := fmt.Sprintf("%x", contentHash.Sum(nil))
-	sTransferHash := fmt.Sprintf("%x", transferHash.Sum(nil))
+	sContentHash := hex.EncodeToString(contentHash.Sum(nil))
+	sTransferHash := hex.EncodeToString(transferHash.Sum(nil))
 
 	cs.ResponseLength = transferBytes
 	cs.ResponseSha256 = sTransferHash
