@@ -31,9 +31,7 @@ type blobArtifactResponse struct {
 	Expires     tcclient.Time `json:"expires"`
 }
 
-// Client is a struct which can upload and download artifacts.  All http
-// requests run by the same instance of a Client are run through the same http
-// transport
+// Client knows how to upload and download blob artifacts
 type Client struct {
 	agent                   client
 	queue                   *queue.Queue
@@ -41,18 +39,13 @@ type Client struct {
 	multiPartPartChunkCount int
 }
 
-// Default chunk size.  A chunk is the size of reads and writes.  Default value
-// is 32KB
+// Default chunk size is 128KB
 const DefaultChunkSize int = 128 * 1024
 
-// Default part size.  In a multi-part upload, the whole file is broken into
-// smaller portions.  Each of these portions can be uploaded simultaneously.
-// For the sake of simplicity, the part size must be a multiple of the chunk
-// size so that we don't have to worry about each individual read or write
-// being split across more than one part.  Default value is 100MB
+// Default part size is 100MB
 const DefaultPartSize int = 100 * 1024 * 1024 / DefaultChunkSize
 
-// Create a new Client for use with valid properties
+// New creates a Client for use
 func New(queue *queue.Queue) *Client {
 	a := newAgent()
 	return &Client{
@@ -63,9 +56,14 @@ func New(queue *queue.Queue) *Client {
 	}
 }
 
-// Set the chunkSize in Bytes and the partSize in bytes.  This function is provided
-// for systems which need specific values, but the defaults of 32KB and 100MB should
-// be the default
+// SetInternalSizes sets the chunkSize and partSize .  The chunk size is the
+// number of bytes that this library will read and write in a single IO
+// operation.  In a multi-part upload, the whole file is broken into smaller
+// portions.  Each of these portions can be uploaded simultaneously.  For the
+// sake of simplicity, the part size must be a multiple of the chunk size so
+// that we don't have to worry about each individual read or write being split
+// across more than one part.  Both are changed in a single call because the
+// partSize must always be a multiple of the chunkSize
 func (c *Client) SetInternalSizes(chunkSize, partSize int) error {
 	if partSize < 5*1024*1024 {
 		return errors.New("m, not %dinimum part size is 5mb")
@@ -84,10 +82,18 @@ func (c *Client) SetInternalSizes(chunkSize, partSize int) error {
 	return nil
 }
 
-// Perform an upload
-// The contents of input will be copied to the beginning of output, optionally
-// with gzip encoding.  Output must be an io.ReadWriteSeeker which has 0 bytes
-// (thus position 0).
+// GetInternalSizes returns the chunkSize and partSize, respectively, for this
+// Client.
+func (c *Client) GetInternalSizes() (int, int) {
+	return c.chunkSize, c.multiPartPartChunkCount * c.chunkSize
+}
+
+// Upload an artifact.  The contents of input will be copied to the beginning
+// of output, optionally with gzip encoding.  Output must be an
+// io.ReadWriteSeeker which has 0 bytes (thus position 0).  We need the output
+// to be able to Read, Write and Seek because we'll pass over the file one time
+// to copy it to the output, then seek back to the beginning and read it in
+// again for the upload
 func (c *Client) Upload(taskID, runID, name string, input io.ReadSeeker, output io.ReadWriteSeeker, gzip, multipart bool) error {
 
 	// Let's check if the output has data already.  The idea here is that if we
@@ -261,6 +267,22 @@ func (c *Client) Upload(taskID, runID, name string, input io.ReadSeeker, output 
 // or not
 func (c *Client) download(u string, outputWriter io.Writer) error {
 
+	// Let's check if the output has data already, but only if the outputWriter
+	// implements the Seeker interface.  The idea here is that if we seek to the
+	// end of the io.ReadWriteSeeker and the new position is not 0, we know that
+	// there's data.  It's safe to not seek back to 0 from the io.SeekStart
+	// because we just asserted that there's 0 bytes in the io.WriteSeeker,
+	// so we know that it's position is 0
+	if seeker, ok := outputWriter.(io.Seeker); ok {
+		outSize, err := seeker.Seek(0, io.SeekEnd)
+		if err != nil {
+			return err
+		}
+		if outSize != 0 {
+			return ErrBadOutputWriter
+		}
+	}
+
 	request := newRequest(u, "GET", &http.Header{})
 
 	var redirectBuf bytes.Buffer
@@ -315,7 +337,8 @@ func (c *Client) download(u string, outputWriter io.Writer) error {
 // will be written instead of the artifact's content.  This is so that we can
 // stream the response to the output instead of buffering it in memory.  It is
 // the callers responsibility to delete the contents of the output on failure
-// if needed
+// if needed.  If the output also implements the io.Seeker interface, a check
+// that the output is already empty will occur
 func (c *Client) Download(taskID, runID, name string, output io.Writer) error {
 	// We need to build the URL because we're going to need to get the redirect's
 	// headers.  That's not possible with the q.GetArtifact() method.  Ideally,
@@ -333,12 +356,13 @@ func (c *Client) Download(taskID, runID, name string, output io.Writer) error {
 
 }
 
-// Download will download the named artifact from the latest run of a task.  If
-// an error occurs during the download, the response body of the error message
-// will be written instead of the artifact's content.  This is so that we can
-// stream the response to the output instead of buffering it in memory.  It is
-// the callers responsibility to delete the contents of the output on failure
-// if needed
+// DownloadLatest will download the named artifact from the latest run of a
+// task.  If an error occurs during the download, the response body of the
+// error message will be written instead of the artifact's content.  This is so
+// that we can stream the response to the output instead of buffering it in
+// memory.  It is the callers responsibility to delete the contents of the
+// output on failure if needed.  If the output also implements the io.Seeker
+// interface, a check that the output is already empty will occur
 func (c *Client) DownloadLatest(taskID, name string, output io.Writer) error {
 	// We need to build the URL because we're going to need to get the redirect's
 	// headers.  That's not possible with the q.GetArtifact() method.  Ideally,

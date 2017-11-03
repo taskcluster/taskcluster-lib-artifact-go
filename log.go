@@ -13,20 +13,26 @@ import (
 // behaviour of logging.
 var logger = log.New(os.Stdout, "artifact:", log.LUTC)
 
-// SetLogOutput will change the io.Writer which log messages should be written
-// to.  By default, logs are written to os.Stdout to ensure that consumers of
-// this library get useful logs.  If you don't want logs at all, set the log
-// output to ioutil.Discard
+// SetLogOutput will change the prefix used by logs in this package This is a
+// simple convenience method to wrap this package's Logger instance's method.
+// See: https://golang.org/pkg/log/#Logger.SetOutput
+// If you wish to unconditionally supress all logs from this library, you can
+// do the following:
+//  SetLogOutput(ioutil.Discard)
 func SetLogOutput(w io.Writer) {
 	logger.SetOutput(w)
 }
 
-// SetLogPrefix will change the prefix used by logs in this package
+// SetLogPrefix will change the prefix used by logs in this package This is a
+// simple convenience method to wrap this package's Logger instance's method.
+// See: https://golang.org/pkg/log/#Logger.SetPrefix
 func SetLogPrefix(p string) {
 	logger.SetPrefix(p)
 }
 
 // SetLogFlags will change the flags which are used by logs in this package
+// This is a simple convenience method to wrap this package's Logger instance's
+// method.  See: https://golang.org/pkg/log/#Logger.SetFlags
 func SetLogFlags(f int) {
 	logger.SetFlags(f)
 }

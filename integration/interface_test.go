@@ -162,7 +162,6 @@ func TestIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// TODO: Do a loop to support gzip and non-gzip, for now only gzip
 
 	// We have to restructure the response's credentials into tcclient.Credentials
 	taskQ := queue.New(&tcclient.Credentials{
