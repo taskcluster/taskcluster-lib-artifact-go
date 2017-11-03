@@ -8,7 +8,7 @@ var ErrHTTPS = errors.New("only resources served over https are allowed")
 // ErrCorrupt is returned when an artifact is corrupt
 var ErrCorrupt = errors.New("corrupt resource")
 
-// ErrExpectedDirect is returned when a redirect is expected but not received
+// ErrExpectedRedirect is returned when a redirect is expected but not received
 var ErrExpectedRedirect = errors.New("expected redirect")
 
 // ErrUnexpectedRedirect is returned when we expect a redirect but do not

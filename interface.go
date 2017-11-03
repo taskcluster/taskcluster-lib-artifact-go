@@ -39,10 +39,10 @@ type Client struct {
 	multiPartPartChunkCount int
 }
 
-// Default chunk size is 128KB
+// DefaultChunkSize is 128KB
 const DefaultChunkSize int = 128 * 1024
 
-// Default part size is 100MB
+// DefaultPartSize is 100MB
 const DefaultPartSize int = 100 * 1024 * 1024 / DefaultChunkSize
 
 // New creates a Client for use

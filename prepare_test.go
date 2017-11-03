@@ -93,7 +93,7 @@ func testUpload(t *testing.T, gzip bool, mp bool, filename string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	//defer os.Remove(output.Name())
+	defer os.Remove(output.Name())
 
 	u, err := singlePartUpload(input, output, gzip, chunkSize)
 	if err != nil {

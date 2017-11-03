@@ -1,8 +1,8 @@
-// This package provides an interface for working with the Taskcluster Queue's
-// blob artifacts.  Blob artifacts are the way that Taskcluster stores and distributes
-// the results of a task and replace the old "S3" type of artifact for storing artifacts
-// in S3.  These artifacts have stronger authenticity and integrity guaruntees than the old
-// type.
+// Package artifact provides an interface for working with the Taskcluster
+// Queue's blob artifacts.  Blob artifacts are the way that Taskcluster stores
+// and distributes the results of a task and replace the old "S3" type of
+// artifact for storing artifacts in S3.  These artifacts have stronger
+// authenticity and integrity guaruntees than the old type.
 //
 // Overview of Blob Artifacts
 //
@@ -51,6 +51,6 @@
 // encoding and decoding is done independently of any gzip encoding by the
 // calling code.  This could result in double gzip encoding if a gzip file is
 // passed into Upload() with the gzip argument set to true.  When this artifact
-// is downloaded with this library, the resulting output will be written as a once
-// encoded gzip file
+// is downloaded with this library, the resulting output will be written as a
+// once encoded gzip file
 package artifact

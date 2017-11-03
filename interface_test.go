@@ -118,12 +118,12 @@ func createInput(size int) (*bytes.Reader, error) {
 	return bytes.NewReader(buf.Bytes()), nil
 }
 
-func ExampleClient_Upload() error {
+func ExampleClient_Upload() {
 
 	// We need a task specific taskcluster-client-go Queue
 	taskQ, err := setupEnvironment()
 	if err != nil {
-		return err
+		panic(err)
 	}
 
 	client := New(taskQ)
@@ -131,12 +131,12 @@ func ExampleClient_Upload() error {
 	// We're going to create an input for uploading artifacts
 	input, err := createInput(25) // 25MB
 	if err != nil {
-		return err
+		panic(err)
 	}
 
 	output, err := ioutil.TempFile(".", ".scratch")
 	if err != nil {
-		return err
+		panic(err)
 	}
 	defer os.Remove(output.Name())
 
@@ -150,28 +150,26 @@ func ExampleClient_Upload() error {
 	// Let's upload the files four different ways
 	err = client.Upload(taskID, runID, "public/single-part-identity", input, output, false, false)
 	if err != nil {
-		return err
+		panic(err)
 	}
 
 	err = client.Upload(taskID, runID, "public/single-part-gzip", input, output, true, false)
 	if err != nil {
-		return err
+		panic(err)
 	}
 
 	err = client.Upload(taskID, runID, "public/multi-part-identity", input, output, false, true)
 	if err != nil {
-		return err
+		panic(err)
 	}
 
 	err = client.Upload(taskID, runID, "public/multi-part-gzip", input, output, true, true)
 	if err != nil {
-		return err
+		panic(err)
 	}
-
-	return nil
 }
 
-func ExampleClient_Download() error {
+func ExampleClient_Download() {
 
 	var output bytes.Buffer
 
@@ -180,13 +178,11 @@ func ExampleClient_Download() error {
 
 	err := client.Download(taskID, runID, "public/single-part-gzip", &output)
 	if err != nil {
-		return err
+		panic(err)
 	}
-
-	return nil
 }
 
-func ExampleClient_DownloadLatest() error {
+func ExampleClient_DownloadLatest() {
 
 	var output bytes.Buffer
 
@@ -195,8 +191,6 @@ func ExampleClient_DownloadLatest() error {
 
 	err := client.DownloadLatest(taskID, "public/single-part-gzip", &output)
 	if err != nil {
-		return err
+		panic(err)
 	}
-
-	return nil
 }

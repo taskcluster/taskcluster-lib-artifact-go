@@ -210,7 +210,7 @@ func (c client) run(request request, inputReader io.Reader, chunkSize int, outpu
 	// which are likely not even on the machine running this code.  Given that,
 	// let's instead treat this as local I/O corruption and mark it as retryable
 	if httpRequest.ContentLength != reqBodyCounter.count {
-		return cs, true, fmt.Errorf("Read %d bytes when we should have read %d", reqBodyCounter.count, httpRequest.ContentLength)
+		return cs, true, fmt.Errorf("read %d bytes when we should have read %d", reqBodyCounter.count, httpRequest.ContentLength)
 	}
 
 	// 500-series errors are always retryable
@@ -271,12 +271,10 @@ func (c client) run(request request, inputReader io.Reader, chunkSize int, outpu
 	// this will also write the output to a file
 	var output io.Writer
 
-	var __dbg bytes.Buffer
-
 	if outputWriter == nil {
-		output = io.MultiWriter(contentHash, contentCounter, &__dbg)
+		output = io.MultiWriter(contentHash, contentCounter)
 	} else {
-		output = io.MultiWriter(outputWriter, contentHash, contentCounter, &__dbg)
+		output = io.MultiWriter(outputWriter, contentHash, contentCounter)
 	}
 
 	// Read buffer
@@ -287,8 +285,6 @@ func (c client) run(request request, inputReader io.Reader, chunkSize int, outpu
 		// Retryable because this is likely a local issue only
 		return cs, true, err
 	}
-
-	//logger.Printf("RESPONSE BODY: %s", __dbg.String())
 
 	transferBytes := transferCounter.count
 	contentBytes := contentCounter.count
