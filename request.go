@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"crypto/sha256"
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -13,10 +12,6 @@ import (
 	"strings"
 	"time"
 )
-
-// ErrCorrupt is an error message which is specifically related to an
-// artifact being found to be corrupt
-var ErrCorrupt = errors.New("corrupt resource")
 
 // The request type contains the information needed to run an HTTP method
 type request struct {

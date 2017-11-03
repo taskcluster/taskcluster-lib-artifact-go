@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"time"
 
@@ -258,9 +259,9 @@ func (c *Client) Upload(taskID, runID, name string, input io.ReadSeeker, output 
 
 // Because we generate different URLs based on whether we're asking for latest
 // or not
-func (c *Client) download(url string, outputWriter io.Writer) error {
+func (c *Client) download(u string, outputWriter io.Writer) error {
 
-	request := newRequest(url, "GET", &http.Header{})
+	request := newRequest(u, "GET", &http.Header{})
 
 	var redirectBuf bytes.Buffer
 
@@ -269,10 +270,28 @@ func (c *Client) download(url string, outputWriter io.Writer) error {
 		logger.Printf("%s\n%s", cs, redirectBuf.String())
 		return err
 	}
+
+	if cs.StatusCode < 300 || cs.StatusCode >= 400 {
+		return ErrExpectedRedirect
+	}
+
 	// Make sure we release the memory stored in the redirect buffer
 	redirectBuf.Reset()
 
 	location := cs.ResponseHeader.Get("Location")
+
+	if location == "" {
+		return ErrBadRedirect
+	}
+
+	resourceURL, err := url.Parse(location)
+	if err != nil {
+		return err
+	}
+
+	if resourceURL.Scheme != "https" {
+		return ErrHTTPS
+	}
 
 	request = newRequest(location, "GET", &http.Header{})
 
@@ -282,6 +301,10 @@ func (c *Client) download(url string, outputWriter io.Writer) error {
 	cs, _, err = c.agent.run(request, nil, c.chunkSize, outputWriter, true)
 	if err != nil {
 		return err
+	}
+
+	if cs.StatusCode >= 300 {
+		return ErrUnexpectedRedirect
 	}
 
 	return nil
