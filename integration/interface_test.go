@@ -130,12 +130,7 @@ func createInOut(t *testing.T) (*os.File, *os.File) {
 }
 
 func TestIntegration(t *testing.T) {
-	lf, err := os.Create("log")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer lf.Close()
-	//artifact.SetLogOutput(lf)
+	artifact.SetLogOutput(newUnitTestLogWriter(t))
 	body := prepareFiles(t)
 
 	creds := &tcclient.Credentials{}
@@ -157,7 +152,7 @@ func TestIntegration(t *testing.T) {
 	runID := "0"
 	t.Logf("TaskGroupId: %s Task ID: %s", taskGroupID, taskID)
 
-	_, err = q.CreateTask(taskID, testTask(t))
+	_, err := q.CreateTask(taskID, testTask(t))
 	if err != nil {
 		t.Fatal(err)
 	}
