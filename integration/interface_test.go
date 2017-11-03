@@ -176,6 +176,9 @@ func TestIntegration(t *testing.T) {
 		name := "public/forced-single-part-identity"
 		t.Logf("Uploading a single part file")
 		input, output := createInOut(t)
+		defer input.Close()
+		defer output.Close()
+		defer os.Remove(output.Name())
 		err = client.Upload(taskID, runID, name, input, output, false, false, taskQ)
 		if err != nil {
 			t.Fatal(err)
@@ -187,6 +190,9 @@ func TestIntegration(t *testing.T) {
 		name := "public/forced-multi-part-identity"
 		t.Logf("Uploading a multi-part file")
 		input, output := createInOut(t)
+		defer input.Close()
+		defer output.Close()
+		defer os.Remove(output.Name())
 		err = client.Upload(taskID, runID, name, input, output, false, true, taskQ)
 		if err != nil {
 			t.Fatal(err)
@@ -198,6 +204,9 @@ func TestIntegration(t *testing.T) {
 		name := "public/forced-single-part-gzip"
 		t.Logf("Uploading a single part file")
 		input, output := createInOut(t)
+		defer input.Close()
+		defer output.Close()
+		defer os.Remove(output.Name())
 		err = client.Upload(taskID, runID, name, input, output, true, false, taskQ)
 		if err != nil {
 			t.Fatal(err)
@@ -209,6 +218,9 @@ func TestIntegration(t *testing.T) {
 		name := "public/forced-multi-part-gzip"
 		t.Logf("Uploading a multi-part file")
 		input, output := createInOut(t)
+		defer input.Close()
+		defer output.Close()
+		defer os.Remove(output.Name())
 		err = client.Upload(taskID, runID, name, input, output, true, true, taskQ)
 		if err != nil {
 			t.Fatal(err)

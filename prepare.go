@@ -2,7 +2,7 @@ package artifact
 
 import (
 	"bytes"
-	zlib "compress/gzip"
+	gziplib "compress/gzip"
 	"crypto/sha256"
 	"errors"
 	"fmt"
@@ -140,7 +140,6 @@ func singlePartUpload(input io.ReadSeeker, output io.Writer, gzip bool, chunkSiz
 
 	hash := sha256.New()
 	buf := make([]byte, chunkSize)
-	size := byteCountingWriter{0}
 
 	// When we're compressing using gzip, we're going to use a more complex copy routine
 	if gzip {
@@ -148,14 +147,14 @@ func singlePartUpload(input io.ReadSeeker, output io.Writer, gzip bool, chunkSiz
 		// Unfortunately, the gzip.Writer doesn't track how many bytes were written
 		// to the underlying io.Writer, so we need to do that
 		transferSize := byteCountingWriter{0}
-		gzipWriter := zlib.NewWriter(io.MultiWriter(transferHash, output, &transferSize))
+		gzipWriter := gziplib.NewWriter(io.MultiWriter(transferHash, output, &transferSize))
 
 		// We're setting constant headers so that gzip has deterministic output
 		gzipWriter.ModTime = time.Date(2000, time.January, 0, 0, 0, 0, 0, time.UTC)
 
-		_output := io.MultiWriter(gzipWriter, hash, &size)
+		_output := io.MultiWriter(gzipWriter, hash)
 
-		_, err := io.CopyBuffer(_output, input, buf)
+		contentSize, err := io.CopyBuffer(_output, input, buf)
 		if err != nil {
 			return upload{}, err
 		}
@@ -173,7 +172,7 @@ func singlePartUpload(input io.ReadSeeker, output io.Writer, gzip bool, chunkSiz
 
 		return upload{
 			Sha256:          hash.Sum(nil),
-			Size:            size.count,
+			Size:            contentSize,
 			TransferSha256:  transferHash.Sum(nil),
 			TransferSize:    transferSize.count,
 			ContentEncoding: "gzip",

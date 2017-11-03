@@ -55,9 +55,24 @@ const MultiPartSize int64 = 500 * 1024 * 1024 // 500MB
 const MultiPartPartChunkCount int = 100 * 1024 * 1024 / ChunkSize // 100MB
 
 // Perform an upload
+// The contents of input will be copied to the beginning of output, optionally
+// with gzip encoding.  Output must be an io.ReadWriteSeeker which has 0 bytes
+// (thus position 0).
 func (c *Client) Upload(taskID, runID, name string, input io.ReadSeeker, output io.ReadWriteSeeker, gzip, multipart bool, q *queue.Queue) error {
 
-	var err error
+	// Let's check if the output has data already.  The idea here is that if we
+	// seek to the end of the io.ReadWriteSeeker and the new position is not 0,
+	// we know that there's data.  It's safe to not seek back to 0 from the
+	// io.SeekStart because we just asserted that there's 0 bytes in the
+	// io.ReadWriteSeeker, so we know that it's position is 0
+	outSize, err := output.Seek(0, io.SeekEnd)
+	if err != nil {
+		return err
+	}
+	if outSize != 0 {
+		return fmt.Errorf("Output must be size 0, not %d bytes", outSize)
+	}
+
 	var u upload
 
 	if multipart {
@@ -159,9 +174,9 @@ func (c *Client) Upload(taskID, runID, name string, input io.ReadSeeker, output 
 		var b *body
 
 		if u.Parts == nil {
-			b, err = newBody(input, 0, u.TransferSize)
+			b, err = newBody(output, 0, u.TransferSize)
 		} else {
-			b, err = newBody(input, u.Parts[i].Start, u.Parts[i].Size)
+			b, err = newBody(output, u.Parts[i].Start, u.Parts[i].Size)
 		}
 		if err != nil {
 			return err
