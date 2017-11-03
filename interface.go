@@ -42,7 +42,7 @@ type Client struct {
 
 // Default chunk size.  A chunk is the size of reads and writes.  Default value
 // is 32KB
-const DefaultChunkSize int = 32 * 1024
+const DefaultChunkSize int = 128 * 1024
 
 // Default part size.  In a multi-part upload, the whole file is broken into
 // smaller portions.  Each of these portions can be uploaded simultaneously.
