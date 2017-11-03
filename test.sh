@@ -4,9 +4,9 @@ set -e
 
 echo Updating dependencies
 go get -u ./...
-go get -u github.com/davecheney/godoc2md
 go get -u github.com/golang/lint/golint
 go get -u github.com/alecthomas/gometalinter
+go get -u github.com/GandalfUK/godoc2ghmd
 gometalinter --install > /dev/null
 
 echo Running Unit Tests
@@ -20,5 +20,5 @@ echo Running govet
 
 go get -u github.com/robertkrimen/godocdown/godocdown
 
-godoc2md $(git config --get remote.origin.url | sed "s,^https://,, ; s,:,/,") > README.md
+godoc2ghmd $(git config --get remote.origin.url | sed "s,^https://,, ; s,:,/,") > README.md
 

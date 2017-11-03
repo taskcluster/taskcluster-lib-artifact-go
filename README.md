@@ -1,12 +1,10 @@
-
-
 # artifact
 `import "github.com/taskcluster/taskcluster-lib-artifact-go"`
 
 * [Overview](#pkg-overview)
+* [Imported Packages](#pkg-imports)
 * [Index](#pkg-index)
 * [Examples](#pkg-examples)
-* [Subdirectories](#pkg-subdirectories)
 
 ## <a name="pkg-overview">Overview</a>
 Package artifact provides an interface for working with the Taskcluster
@@ -62,8 +60,10 @@ passed into Upload() with the gzip argument set to true.  When this artifact
 is downloaded with this library, the resulting output will be written as a
 once encoded gzip file
 
+## <a name="pkg-imports">Imported Packages</a>
 
-
+- [github.com/taskcluster/taskcluster-client-go](./../taskcluster-client-go)
+- [github.com/taskcluster/taskcluster-client-go/queue](./../taskcluster-client-go/queue)
 
 ## <a name="pkg-index">Index</a>
 * [Constants](#pkg-constants)
@@ -72,12 +72,12 @@ once encoded gzip file
 * [func SetLogOutput(w io.Writer)](#SetLogOutput)
 * [func SetLogPrefix(p string)](#SetLogPrefix)
 * [type Client](#Client)
-  * [func New(queue *queue.Queue) *Client](#New)
-  * [func (c *Client) Download(taskID, runID, name string, output io.Writer) error](#Client.Download)
-  * [func (c *Client) DownloadLatest(taskID, name string, output io.Writer) error](#Client.DownloadLatest)
-  * [func (c *Client) GetInternalSizes() (int, int)](#Client.GetInternalSizes)
-  * [func (c *Client) SetInternalSizes(chunkSize, partSize int) error](#Client.SetInternalSizes)
-  * [func (c *Client) Upload(taskID, runID, name string, input io.ReadSeeker, output io.ReadWriteSeeker, gzip, multipart bool) error](#Client.Upload)
+  * [func New(queue \*queue.Queue) \*Client](#New)
+  * [func (c \*Client) Download(taskID, runID, name string, output io.Writer) error](#Client.Download)
+  * [func (c \*Client) DownloadLatest(taskID, name string, output io.Writer) error](#Client.DownloadLatest)
+  * [func (c \*Client) GetInternalSizes() (int, int)](#Client.GetInternalSizes)
+  * [func (c \*Client) SetInternalSizes(chunkSize, partSize int) error](#Client.SetInternalSizes)
+  * [func (c \*Client) Upload(taskID, runID, name string, input io.ReadSeeker, output io.ReadWriteSeeker, gzip, multipart bool) error](#Client.Upload)
 
 #### <a name="pkg-examples">Examples</a>
 * [Client.Download](#example_Client_Download)
@@ -85,8 +85,7 @@ once encoded gzip file
 * [Client.Upload](#example_Client_Upload)
 
 #### <a name="pkg-files">Package files</a>
-[body.go](/src/github.com/taskcluster/taskcluster-lib-artifact-go/body.go) [bytecounter.go](/src/github.com/taskcluster/taskcluster-lib-artifact-go/bytecounter.go) [docs.go](/src/github.com/taskcluster/taskcluster-lib-artifact-go/docs.go) [errors.go](/src/github.com/taskcluster/taskcluster-lib-artifact-go/errors.go) [interface.go](/src/github.com/taskcluster/taskcluster-lib-artifact-go/interface.go) [log.go](/src/github.com/taskcluster/taskcluster-lib-artifact-go/log.go) [prepare.go](/src/github.com/taskcluster/taskcluster-lib-artifact-go/prepare.go) [request.go](/src/github.com/taskcluster/taskcluster-lib-artifact-go/request.go) [test_logger.go](/src/github.com/taskcluster/taskcluster-lib-artifact-go/test_logger.go) 
-
+[body.go](./body.go) [bytecounter.go](./bytecounter.go) [docs.go](./docs.go) [errors.go](./errors.go) [interface.go](./interface.go) [log.go](./log.go) [prepare.go](./prepare.go) [request.go](./request.go) [test_logger.go](./test_logger.go) 
 
 ## <a name="pkg-constants">Constants</a>
 ``` go
@@ -98,7 +97,6 @@ DefaultChunkSize is 128KB
 const DefaultPartSize int = 100 * 1024 * 1024 / DefaultChunkSize
 ```
 DefaultPartSize is 100MB
-
 
 ## <a name="pkg-variables">Variables</a>
 ``` go
@@ -135,9 +133,7 @@ var ErrUnexpectedRedirect = errors.New("unexpected redirect")
 ErrUnexpectedRedirect is returned when we expect a redirect but do not
 receive one
 
-
-
-## <a name="SetLogFlags">func</a> [SetLogFlags](/src/target/log.go?s=1311:1334#L36)
+## <a name="SetLogFlags">func</a> [SetLogFlags](./log.go#L36)
 ``` go
 func SetLogFlags(f int)
 ```
@@ -145,9 +141,7 @@ SetLogFlags will change the flags which are used by logs in this package
 This is a simple convenience method to wrap this package's Logger instance's
 method.  See: <a href="https://golang.org/pkg/log/#Logger.SetFlags">https://golang.org/pkg/log/#Logger.SetFlags</a>
 
-
-
-## <a name="SetLogOutput">func</a> [SetLogOutput](/src/target/log.go?s=774:804#L22)
+## <a name="SetLogOutput">func</a> [SetLogOutput](./log.go#L22)
 ``` go
 func SetLogOutput(w io.Writer)
 ```
@@ -157,12 +151,9 @@ See: <a href="https://golang.org/pkg/log/#Logger.SetOutput">https://golang.org/p
 If you wish to unconditionally supress all logs from this library, you can
 do the following:
 
-
 	SetLogOutput(ioutil.Discard)
 
-
-
-## <a name="SetLogPrefix">func</a> [SetLogPrefix](/src/target/log.go?s=1040:1067#L29)
+## <a name="SetLogPrefix">func</a> [SetLogPrefix](./log.go#L29)
 ``` go
 func SetLogPrefix(p string)
 ```
@@ -170,10 +161,7 @@ SetLogPrefix will change the prefix used by logs in this package This is a
 simple convenience method to wrap this package's Logger instance's method.
 See: <a href="https://golang.org/pkg/log/#Logger.SetPrefix">https://golang.org/pkg/log/#Logger.SetPrefix</a>
 
-
-
-
-## <a name="Client">type</a> [Client](/src/target/interface.go?s=898:1048#L35)
+## <a name="Client">type</a> [Client](./interface.go#L35-L40)
 ``` go
 type Client struct {
     // contains filtered or unexported fields
@@ -181,23 +169,13 @@ type Client struct {
 ```
 Client knows how to upload and download blob artifacts
 
-
-
-
-
-
-
-### <a name="New">func</a> [New](/src/target/interface.go?s=1246:1282#L49)
+### <a name="New">func</a> [New](./interface.go#L49)
 ``` go
 func New(queue *queue.Queue) *Client
 ```
 New creates a Client for use
 
-
-
-
-
-### <a name="Client.Download">func</a> (\*Client) [Download](/src/target/interface.go?s=10959:11036#L342)
+### <a name="Client.Download">func</a> (\*Client) [Download](./interface.go#L342)
 ``` go
 func (c *Client) Download(taskID, runID, name string, output io.Writer) error
 ```
@@ -209,10 +187,7 @@ the callers responsibility to delete the contents of the output on failure
 if needed.  If the output also implements the io.Seeker interface, a check
 that the output is already empty will occur
 
-
-
-
-### <a name="Client.DownloadLatest">func</a> (\*Client) [DownloadLatest](/src/target/interface.go?s=12123:12199#L366)
+### <a name="Client.DownloadLatest">func</a> (\*Client) [DownloadLatest](./interface.go#L366)
 ``` go
 func (c *Client) DownloadLatest(taskID, name string, output io.Writer) error
 ```
@@ -224,20 +199,14 @@ memory.  It is the callers responsibility to delete the contents of the
 output on failure if needed.  If the output also implements the io.Seeker
 interface, a check that the output is already empty will occur
 
-
-
-
-### <a name="Client.GetInternalSizes">func</a> (\*Client) [GetInternalSizes](/src/target/interface.go?s=2595:2641#L87)
+### <a name="Client.GetInternalSizes">func</a> (\*Client) [GetInternalSizes](./interface.go#L87)
 ``` go
 func (c *Client) GetInternalSizes() (int, int)
 ```
 GetInternalSizes returns the chunkSize and partSize, respectively, for this
 Client.
 
-
-
-
-### <a name="Client.SetInternalSizes">func</a> (\*Client) [SetInternalSizes](/src/target/interface.go?s=2070:2134#L67)
+### <a name="Client.SetInternalSizes">func</a> (\*Client) [SetInternalSizes](./interface.go#L67)
 ``` go
 func (c *Client) SetInternalSizes(chunkSize, partSize int) error
 ```
@@ -250,10 +219,7 @@ that we don't have to worry about each individual read or write being split
 across more than one part.  Both are changed in a single call because the
 partSize must always be a multiple of the chunkSize
 
-
-
-
-### <a name="Client.Upload">func</a> (\*Client) [Upload](/src/target/interface.go?s=3109:3236#L97)
+### <a name="Client.Upload">func</a> (\*Client) [Upload](./interface.go#L97)
 ``` go
 func (c *Client) Upload(taskID, runID, name string, input io.ReadSeeker, output io.ReadWriteSeeker, gzip, multipart bool) error
 ```
@@ -264,12 +230,5 @@ to be able to Read, Write and Seek because we'll pass over the file one time
 to copy it to the output, then seek back to the beginning and read it in
 again for the upload
 
-
-
-
-
-
-
-
 - - -
-Generated by [godoc2md](http://godoc.org/github.com/davecheney/godoc2md)
+Generated by [godoc2ghmd](https://github.com/GandalfUK/godoc2ghmd)
