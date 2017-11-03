@@ -20,5 +20,5 @@ echo Running govet
 
 go get -u github.com/robertkrimen/godocdown/godocdown
 
-godocdown -heading="Title" > README.md
+godocdown -heading="TitleCase" > README.md
 
