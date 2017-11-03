@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -190,4 +191,78 @@ func TestUploadPreperation(t *testing.T) {
 	t.Run("singlepart identity", func(t *testing.T) {
 		testUpload(t, false, false, filename)
 	})
+}
+
+func BenchmarkPrepare(b *testing.B) {
+
+	// Chunk Sizes to test, slice items are the number of KB in the chunk
+	chunkSizes := []int{1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192}
+
+	// File Sizes to test, slice items are the number of MB in the file
+	fileSizes := []int{1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024}
+
+	rbuf := make([]byte, 1024*1024)
+
+	for _, gzip := range []bool{false, true} {
+		for _, fileSize := range fileSizes {
+			filename := fmt.Sprintf("test-files/%d-mb.dat")
+			createFile, err := os.Create(filename)
+			if err != nil {
+				b.Fatal(err)
+			}
+			for i := 0; i < fileSize; i++ {
+				_, err := rand.Read(rbuf)
+				if err != nil {
+					b.Fatal(err)
+				}
+				_, err = createFile.Write(rbuf)
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+
+			for _, chunkSize := range chunkSizes {
+				b.Run(fmt.Sprintf("FileSize=%dMB ChunkSize=%dKB Gzip=%t SinglePart", fileSize, chunkSize, gzip), func(b *testing.B) {
+					input, err := os.Open(filename)
+					if err != nil {
+						b.Fatal(err)
+					}
+					defer input.Close()
+
+					output, err := ioutil.TempFile("", "bench")
+					if err != nil {
+						b.Fatal(err)
+					}
+					defer output.Close()
+					defer os.Remove(output.Name())
+
+					b.ResetTimer()
+					singlePartUpload(input, output, gzip, chunkSize)
+					b.StopTimer()
+
+				})
+
+				b.Run(fmt.Sprintf("FileSize=%dMB ChunkSize=%dKB Gzip=%t MultiPart", fileSize, chunkSize, gzip), func(b *testing.B) {
+					input, err := os.Open(filename)
+					if err != nil {
+						b.Fatal(err)
+					}
+					defer input.Close()
+
+					output, err := ioutil.TempFile("", "bench")
+					if err != nil {
+						b.Fatal(err)
+					}
+					defer output.Close()
+					defer os.Remove(output.Name())
+
+					b.ResetTimer()
+					multiPartUpload(input, output, gzip, chunkSize, 10*1024*1024/chunkSize)
+					b.StopTimer()
+
+				})
+			}
+		}
+	}
+
 }

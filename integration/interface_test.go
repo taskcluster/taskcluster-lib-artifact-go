@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/rand"
 	"encoding/json"
 	"io"
 	"io/ioutil"
@@ -58,8 +59,6 @@ func testTask(t *testing.T) *queue.TaskDefinitionRequest {
 	}
 }
 
-var allTheBytes = []byte{1, 3, 7, 15, 31, 63, 127, 255}
-
 const filename string = "test-file"
 
 // TODO: Should this still return an error or is a t.Fatal call in here enough?
@@ -70,10 +69,16 @@ func prepareFiles(t *testing.T) []byte {
 		t.Fatal(err)
 	}
 	out := io.MultiWriter(file, &buf)
-	for i := 0; i < 256; i++ {
-		_, err = out.Write(allTheBytes)
+
+	rbuf := make([]byte, 1024*1024) // 1MB
+	for i := 0; i < 10; i++ {
+		rand.Read(rbuf)
+		nBytes, err := out.Write(rbuf)
 		if err != nil {
 			t.Fatal(err)
+		}
+		if nBytes != 1024*1024 {
+			t.Fatal("did not write the expected number of bytes(%d)", nBytes)
 		}
 	}
 	err = file.Close()
@@ -83,12 +88,12 @@ func prepareFiles(t *testing.T) []byte {
 	return buf.Bytes()
 }
 
-func downloadCheck(t *testing.T, client *artifact.Client, expected []byte, taskID, runID, name string, q *queue.Queue) {
+func downloadCheck(t *testing.T, client *artifact.Client, expected []byte, taskID, runID, name string) {
 	// Download a specific resource
 
 	var output bytes.Buffer
 
-	err := client.Download(taskID, runID, name, &output, q)
+	err := client.Download(taskID, runID, name, &output)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +104,7 @@ func downloadCheck(t *testing.T, client *artifact.Client, expected []byte, taskI
 
 	t.Logf("Downloaded specific artifact %s-%s-%s", taskID, runID, name)
 	output.Reset()
-	err = client.DownloadLatest(taskID, name, &output, q)
+	err = client.DownloadLatest(taskID, name, &output)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +153,6 @@ func TestIntegration(t *testing.T) {
 	}
 
 	q := queue.New(creds)
-	client := artifact.New(creds)
 	taskID := slugid.Nice()
 	runID := "0"
 	t.Logf("TaskGroupId: %s Task ID: %s", taskGroupID, taskID)
@@ -172,6 +176,8 @@ func TestIntegration(t *testing.T) {
 		Certificate: tcres.Credentials.Certificate,
 	})
 
+	client := artifact.New(taskQ)
+
 	t.Run("should be able to upload and download artifact as single part and identity", func(t *testing.T) {
 		name := "public/forced-single-part-identity"
 		t.Logf("Uploading a single part file")
@@ -179,11 +185,11 @@ func TestIntegration(t *testing.T) {
 		defer input.Close()
 		defer output.Close()
 		defer os.Remove(output.Name())
-		err = client.Upload(taskID, runID, name, input, output, false, false, taskQ)
+		err = client.Upload(taskID, runID, name, input, output, false, false)
 		if err != nil {
 			t.Fatal(err)
 		}
-		downloadCheck(t, client, body, taskID, runID, name, taskQ)
+		downloadCheck(t, client, body, taskID, runID, name)
 	})
 
 	t.Run("should be able to upload and download artifact as multi part and identity", func(t *testing.T) {
@@ -193,11 +199,11 @@ func TestIntegration(t *testing.T) {
 		defer input.Close()
 		defer output.Close()
 		defer os.Remove(output.Name())
-		err = client.Upload(taskID, runID, name, input, output, false, true, taskQ)
+		err = client.Upload(taskID, runID, name, input, output, false, true)
 		if err != nil {
 			t.Fatal(err)
 		}
-		downloadCheck(t, client, body, taskID, runID, name, taskQ)
+		downloadCheck(t, client, body, taskID, runID, name)
 	})
 
 	t.Run("should be able to upload and download artifact as single part and gzip", func(t *testing.T) {
@@ -207,11 +213,11 @@ func TestIntegration(t *testing.T) {
 		defer input.Close()
 		defer output.Close()
 		defer os.Remove(output.Name())
-		err = client.Upload(taskID, runID, name, input, output, true, false, taskQ)
+		err = client.Upload(taskID, runID, name, input, output, true, false)
 		if err != nil {
 			t.Fatal(err)
 		}
-		downloadCheck(t, client, body, taskID, runID, name, taskQ)
+		downloadCheck(t, client, body, taskID, runID, name)
 	})
 
 	t.Run("should be able to upload and download artifact as multi part and gzip", func(t *testing.T) {
@@ -221,10 +227,10 @@ func TestIntegration(t *testing.T) {
 		defer input.Close()
 		defer output.Close()
 		defer os.Remove(output.Name())
-		err = client.Upload(taskID, runID, name, input, output, true, true, taskQ)
+		err = client.Upload(taskID, runID, name, input, output, true, true)
 		if err != nil {
 			t.Fatal(err)
 		}
-		downloadCheck(t, client, body, taskID, runID, name, taskQ)
+		downloadCheck(t, client, body, taskID, runID, name)
 	})
 }

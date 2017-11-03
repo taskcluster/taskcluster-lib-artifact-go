@@ -75,14 +75,14 @@ func newAgent() client {
 	return client{transport, _client}
 }
 
-// CallSummary is a similar concept to that in the taskcluster-client-go
+// callSummary is a similar concept to that in the taskcluster-client-go
 // library, though modified for use specifically here, where we're dealing with
 // multiple mega-byte request and response bodies.  We'll only store string
 // hashes instead of payload bodies.  We return this instead of a raw response
 // because we need to add extra fields (e.g. hashes and whether it was
-// verified).  In this library, the CallSummary is expected to be useful for
+// verified).  In this library, the callSummary is expected to be useful for
 // programatic acccess to the resulting requests
-type CallSummary struct {
+type callSummary struct {
 	Method         string
 	URL            string
 	StatusCode     int
@@ -96,7 +96,7 @@ type CallSummary struct {
 	Verified       bool
 }
 
-func (cs CallSummary) String() string {
+func (cs callSummary) String() string {
 	var reqHBuf bytes.Buffer
 	cs.RequestHeader.Write(&reqHBuf)
 
@@ -137,9 +137,9 @@ func (cs CallSummary) String() string {
 // transaction.  Example of a retryable error is a 500 series error or local IO
 // failure.  Example of a non-retryable error would be getting passed in a
 // request which has an unparsable Content-Length header
-func (c client) run(request request, inputReader io.Reader, chunkSize int, outputWriter io.Writer, verify bool) (CallSummary, bool, error) {
+func (c client) run(request request, inputReader io.Reader, chunkSize int, outputWriter io.Writer, verify bool) (callSummary, bool, error) {
 
-	cs := CallSummary{}
+	cs := callSummary{}
 	cs.URL = request.URL
 	cs.Method = request.Method
 

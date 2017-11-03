@@ -3,6 +3,7 @@ package artifact
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,13 +13,6 @@ import (
 	tcclient "github.com/taskcluster/taskcluster-client-go"
 	queue "github.com/taskcluster/taskcluster-client-go/queue"
 )
-
-// Client is a struct which can upload and download artifacts.  All http
-// requests run by the same instance of a Client are run through the same http
-// transport
-type Client struct {
-	agent client
-}
 
 // We need this different from the request.go:request type because that struct
 // uses http.Header headers and our api returns a different type of headers.
@@ -36,29 +30,64 @@ type blobArtifactResponse struct {
 	Expires     tcclient.Time `json:"expires"`
 }
 
-// New creates a new Client
-func New(creds *tcclient.Credentials) *Client {
-	a := newAgent()
-	return &Client{a}
+// Client is a struct which can upload and download artifacts.  All http
+// requests run by the same instance of a Client are run through the same http
+// transport
+type Client struct {
+	agent                   client
+	queue                   *queue.Queue
+	chunkSize               int
+	multiPartPartChunkCount int
 }
 
-// ChunkSize is the size of each Read() and Write() call
-const ChunkSize int = 32 * 1024 // 32KB
+// Default chunk size.  A chunk is the size of reads and writes.  Default value
+// is 32KB
+const DefaultChunkSize int = 32 * 1024
 
-// MultiPartSize is the size at which the automatically selecting Upload()
-// method will choose to instead do a multi-part upload instead of a single
-// part one
-const MultiPartSize int64 = 500 * 1024 * 1024 // 500MB
+// Default part size.  In a multi-part upload, the whole file is broken into
+// smaller portions.  Each of these portions can be uploaded simultaneously.
+// For the sake of simplicity, the part size must be a multiple of the chunk
+// size so that we don't have to worry about each individual read or write
+// being split across more than one part.  Default value is 100MB
+const DefaultPartSize int = 100 * 1024 * 1024 / DefaultChunkSize
 
-// MultiPartPartChunkCount is the number of CHUNK_SIZE chunks should comprise a
-// single multi-part part.
-const MultiPartPartChunkCount int = 100 * 1024 * 1024 / ChunkSize // 100MB
+// Create a new Client for use with valid properties
+func New(queue *queue.Queue) *Client {
+	a := newAgent()
+	return &Client{
+		agent:                   a,
+		queue:                   queue,
+		chunkSize:               DefaultChunkSize,
+		multiPartPartChunkCount: DefaultPartSize,
+	}
+}
+
+// Set the chunkSize in Bytes and the partSize in bytes.  This function is provided
+// for systems which need specific values, but the defaults of 32KB and 100MB should
+// be the default
+func (c *Client) SetInternalSizes(chunkSize, partSize int) error {
+	if partSize < 5*1024*1024 {
+		return errors.New("m, not %dinimum part size is 5mb")
+	}
+
+	if chunkSize < 1024 {
+		return errors.New("chunk size must be at least 1024 bytes")
+	}
+
+	if partSize%chunkSize != 0 {
+		return errors.New("part size must be a multiple of chunk size")
+	}
+
+	c.chunkSize = chunkSize
+	c.multiPartPartChunkCount = partSize / chunkSize
+	return nil
+}
 
 // Perform an upload
 // The contents of input will be copied to the beginning of output, optionally
 // with gzip encoding.  Output must be an io.ReadWriteSeeker which has 0 bytes
 // (thus position 0).
-func (c *Client) Upload(taskID, runID, name string, input io.ReadSeeker, output io.ReadWriteSeeker, gzip, multipart bool, q *queue.Queue) error {
+func (c *Client) Upload(taskID, runID, name string, input io.ReadSeeker, output io.ReadWriteSeeker, gzip, multipart bool) error {
 
 	// Let's check if the output has data already.  The idea here is that if we
 	// seek to the end of the io.ReadWriteSeeker and the new position is not 0,
@@ -73,15 +102,32 @@ func (c *Client) Upload(taskID, runID, name string, input io.ReadSeeker, output 
 		return fmt.Errorf("Output must be size 0, not %d bytes", outSize)
 	}
 
+	// TODO: Decide if we should do this or let the caller figure out the content
+	// type themselves.  Realistically, this is more likely to get it right, so
+	// I'm really tempted to leave it in and not add another parameter
+	//
+	// Let's determine the content type of the file.  The mimetype sniffer only looks at
+	// the first 512 bytes, so let's read those and then seek the input back to 0
+	mimeBuf := make([]byte, 512)
+	_, err = input.Read(mimeBuf)
+	if err != nil {
+		return err
+	}
+	_, err = output.Seek(0, io.SeekStart)
+	if err != nil {
+		return err
+	}
+	contentType := http.DetectContentType(mimeBuf)
+
 	var u upload
 
 	if multipart {
-		u, err = multiPartUpload(input, output, gzip, ChunkSize, MultiPartPartChunkCount)
+		u, err = multiPartUpload(input, output, gzip, c.chunkSize, c.multiPartPartChunkCount)
 		if err != nil {
 			return err
 		}
 	} else {
-		u, err = singlePartUpload(input, output, gzip, ChunkSize)
+		u, err = singlePartUpload(input, output, gzip, c.chunkSize)
 		if err != nil {
 			return err
 		}
@@ -93,7 +139,7 @@ func (c *Client) Upload(taskID, runID, name string, input io.ReadSeeker, output 
 		ContentSha256:   fmt.Sprintf("%x", u.Sha256),
 		TransferLength:  u.TransferSize,
 		TransferSha256:  fmt.Sprintf("%x", u.TransferSha256),
-		ContentType:     "application/octet-stream",
+		ContentType:     contentType,
 		Expires:         tcclient.Time(time.Now().UTC().AddDate(0, 0, 1)),
 		StorageType:     "blob",
 	}
@@ -118,7 +164,7 @@ func (c *Client) Upload(taskID, runID, name string, input io.ReadSeeker, output 
 
 	pareq := queue.PostArtifactRequest(json.RawMessage(cap))
 
-	resp, err := q.CreateArtifact(taskID, runID, name, &pareq)
+	resp, err := c.queue.CreateArtifact(taskID, runID, name, &pareq)
 	if err != nil {
 		return err
 	}
@@ -186,7 +232,7 @@ func (c *Client) Upload(taskID, runID, name string, input io.ReadSeeker, output 
 		// because we're pretty sure in this method that it's going to be an S3
 		// error message and we'd like to print that
 		var outputBuf bytes.Buffer
-		cs, _, err := c.agent.run(req, b, ChunkSize, &outputBuf, false)
+		cs, _, err := c.agent.run(req, b, c.chunkSize, &outputBuf, false)
 		if err != nil {
 			logger.Printf("%s\n%s", cs, outputBuf.String())
 			return err
@@ -200,7 +246,7 @@ func (c *Client) Upload(taskID, runID, name string, input io.ReadSeeker, output 
 		Etags: etags,
 	}
 
-	err = q.CompleteArtifact(taskID, runID, name, &careq)
+	err = c.queue.CompleteArtifact(taskID, runID, name, &careq)
 	if err != nil {
 		return err
 	}
@@ -212,13 +258,13 @@ func (c *Client) Upload(taskID, runID, name string, input io.ReadSeeker, output 
 
 // Because we generate different URLs based on whether we're asking for latest
 // or not
-func (c *Client) download(url string, outputWriter io.Writer, q *queue.Queue) error {
+func (c *Client) download(url string, outputWriter io.Writer) error {
 
 	request := newRequest(url, "GET", &http.Header{})
 
 	var redirectBuf bytes.Buffer
 
-	cs, _, err := c.agent.run(request, nil, ChunkSize, &redirectBuf, false)
+	cs, _, err := c.agent.run(request, nil, c.chunkSize, &redirectBuf, false)
 	if err != nil {
 		logger.Printf("%s\n%s", cs, redirectBuf.String())
 		return err
@@ -233,7 +279,7 @@ func (c *Client) download(url string, outputWriter io.Writer, q *queue.Queue) er
 	// Now we're going to request the artifact for real.  We're going to write directly
 	// to the outputWriter.  This does mean, unfortunately, that the outputWriter will
 	// contain the
-	cs, _, err = c.agent.run(request, nil, ChunkSize, outputWriter, true)
+	cs, _, err = c.agent.run(request, nil, c.chunkSize, outputWriter, true)
 	if err != nil {
 		return err
 	}
@@ -244,10 +290,10 @@ func (c *Client) download(url string, outputWriter io.Writer, q *queue.Queue) er
 // Download will download the named artifact from a specific run of a task.  If
 // an error occurs during the download, the response body of the error message
 // will be written instead of the artifact's content.  This is so that we can
-// stream the response to the outputWriter instead of buffering it in memory.
-// If this behaviour is unacceptable for your use case, you should delete the
-// resource that's being written to on an error of this method
-func (c *Client) Download(taskID, runID, name string, outputWriter io.Writer, q *queue.Queue) error {
+// stream the response to the output instead of buffering it in memory.  It is
+// the callers responsibility to delete the contents of the output on failure
+// if needed
+func (c *Client) Download(taskID, runID, name string, output io.Writer) error {
 	// We need to build the URL because we're going to need to get the redirect's
 	// headers.  That's not possible with the q.GetArtifact() method.  Ideally,
 	// we'd have a q.GetArtifact_BuildURL method which would allow us to do
@@ -255,18 +301,22 @@ func (c *Client) Download(taskID, runID, name string, outputWriter io.Writer, q 
 	// with "public/"
 
 	// TODO: How long should this signed url really be valid for?
-	url, err := q.GetArtifact_SignedURL(taskID, runID, name, time.Duration(3)*time.Hour)
+	url, err := c.queue.GetArtifact_SignedURL(taskID, runID, name, time.Duration(3)*time.Hour)
 	if err != nil {
 		return err
 	}
 
-	return c.download(url.String(), outputWriter, q)
+	return c.download(url.String(), output)
 
 }
 
-// DownloadLatest will download the named artifact from the latest run of a
-// task
-func (c *Client) DownloadLatest(taskID, name string, outputWriter io.Writer, q *queue.Queue) error {
+// Download will download the named artifact from the latest run of a task.  If
+// an error occurs during the download, the response body of the error message
+// will be written instead of the artifact's content.  This is so that we can
+// stream the response to the output instead of buffering it in memory.  It is
+// the callers responsibility to delete the contents of the output on failure
+// if needed
+func (c *Client) DownloadLatest(taskID, name string, output io.Writer) error {
 	// We need to build the URL because we're going to need to get the redirect's
 	// headers.  That's not possible with the q.GetArtifact() method.  Ideally,
 	// we'd have a q.GetArtifact_BuildURL method which would allow us to do
@@ -274,10 +324,10 @@ func (c *Client) DownloadLatest(taskID, name string, outputWriter io.Writer, q *
 	// with "public/"
 
 	// TODO: How long should this signed url really be valid for?
-	url, err := q.GetLatestArtifact_SignedURL(taskID, name, time.Duration(1)*time.Hour)
+	url, err := c.queue.GetLatestArtifact_SignedURL(taskID, name, time.Duration(1)*time.Hour)
 	if err != nil {
 		return err
 	}
 
-	return c.download(url.String(), outputWriter, q)
+	return c.download(url.String(), output)
 }
