@@ -196,7 +196,7 @@ func TestUploadPreperation(t *testing.T) {
 func BenchmarkPrepare(b *testing.B) {
 
 	// Chunk Sizes to test, slice items are the number of KB in the chunk
-	chunkSizes := []int{1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192}
+	chunkSizes := []int{8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192}
 
 	// File Sizes to test, slice items are the number of MB in the file
 	fileSizes := []int{1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024}
@@ -205,7 +205,7 @@ func BenchmarkPrepare(b *testing.B) {
 
 	for _, gzip := range []bool{false, true} {
 		for _, fileSize := range fileSizes {
-			filename := fmt.Sprintf("test-files/%d-mb.dat")
+			filename := fmt.Sprintf("test-files/%d-mb.dat", fileSize)
 			createFile, err := os.Create(filename)
 			if err != nil {
 				b.Fatal(err)
