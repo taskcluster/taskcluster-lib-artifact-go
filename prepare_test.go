@@ -145,10 +145,10 @@ func TestUploadPreperation(t *testing.T) {
 func BenchmarkPrepare(b *testing.B) {
 
 	// Chunk Sizes to test, slice items are the number of KB in the chunk
-	chunkSizes := []int{8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192}
+	chunkSizes := []int{8, 32, 128, 512, 2048, 8192}
 
 	// File Sizes to test, slice items are the number of MB in the file
-	fileSizes := []int{1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024}
+	fileSizes := []int{1, 2, 4, 16, 64, 512, 1024}
 
 	rbuf := make([]byte, 1024*1024)
 

@@ -13,15 +13,15 @@ import (
 
 const (
 	ErrInternal = 1
-	ErrCorrupt  = 13
 	ErrBadUsage = 2
+	ErrCorrupt  = 13
 )
 
 // TODO implement an in memory 'file'
 // TODO implement 'redirect' and 'error' artifact types?
 
 // It would be nice if this were exposed as a package variable instead
-func defaultQBU() string {
+func findQueueDefaultBaseUrl() string {
 	q := queue.New(&tcclient.Credentials{})
 	return q.BaseURL
 }
@@ -30,6 +30,7 @@ func main() {
 	app := cli.NewApp()
 
 	app.Name = "artifact"
+	app.Version = "0.0.1"
 	app.Usage = "interact with taskcluster artifacts"
 
 	app.OnUsageError = func(c *cli.Context, err error, isSubcommand bool) error {
@@ -41,7 +42,7 @@ func main() {
 		return nil
 	}
 
-	baseURL := defaultQBU()
+	baseURL := findQueueDefaultBaseUrl()
 
 	app.Flags = []cli.Flag{
 		cli.StringFlag{

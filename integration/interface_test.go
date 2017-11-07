@@ -16,10 +16,8 @@ import (
 	artifact "github.com/taskcluster/taskcluster-lib-artifact-go"
 )
 
-var taskGroupID = slugid.Nice()
-
 // Copied from the generic-worker's artifact tests (thanks Pete!)
-func testTask(t *testing.T) *queue.TaskDefinitionRequest {
+func testTask(t *testing.T, taskGroupID string) *queue.TaskDefinitionRequest {
 	created := time.Now().UTC()
 	// reset nanoseconds
 	created = created.Add(time.Nanosecond * time.Duration(created.Nanosecond()*-1))
@@ -129,10 +127,9 @@ func createInOut(t *testing.T) (*os.File, *os.File) {
 	return inFile, outFile
 }
 
-func TestIntegration(t *testing.T) {
-	artifact.SetLogOutput(newUnitTestLogWriter(t))
-	body := prepareFiles(t)
-
+// Create and claim a task, returning a pointer to a Queue which is configured
+// with the credentials for the task
+func createTask(t *testing.T, taskGroupID, taskID, runID string) *queue.Queue {
 	creds := &tcclient.Credentials{}
 
 	if value, present := os.LookupEnv("TASKCLUSTER_CLIENT_ID"); present {
@@ -148,11 +145,9 @@ func TestIntegration(t *testing.T) {
 	}
 
 	q := queue.New(creds)
-	taskID := slugid.Nice()
-	runID := "0"
 	t.Logf("TaskGroupId: %s Task ID: %s", taskGroupID, taskID)
 
-	_, err := q.CreateTask(taskID, testTask(t))
+	_, err := q.CreateTask(taskID, testTask(t, taskGroupID))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,11 +159,23 @@ func TestIntegration(t *testing.T) {
 	}
 
 	// We have to restructure the response's credentials into tcclient.Credentials
-	taskQ := queue.New(&tcclient.Credentials{
+	return queue.New(&tcclient.Credentials{
 		ClientID:    tcres.Credentials.ClientID,
 		AccessToken: tcres.Credentials.AccessToken,
 		Certificate: tcres.Credentials.Certificate,
 	})
+}
+
+func TestIntegration(t *testing.T) {
+	artifact.SetLogOutput(newUnitTestLogWriter(t))
+	body := prepareFiles(t)
+
+	var err error
+
+	taskGroupID := slugid.Nice()
+	taskID := slugid.Nice()
+	runID := "0"
+	taskQ := createTask(t, taskGroupID, taskID, runID)
 
 	client := artifact.New(taskQ)
 

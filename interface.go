@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"regexp"
 	"time"
 
 	tcclient "github.com/taskcluster/taskcluster-client-go"
@@ -178,26 +177,9 @@ func (c *Client) Upload(taskID, runID, name string, input io.ReadSeeker, output 
 
 	var bares blobArtifactResponse
 
-	if multipart {
-		// TODO There's a slight hack required here because the queue is currently
-		// serving the content length with a non-string value, but only for
-		// multipart uploads.  This has been addressed in Queue PR#220 but we're
-		// going to do a quick hack because of the change freeze.  Basically, we're
-		// going to rewrite the content-length as a string in json terms.  This is
-		// a horrible idea for production, so we When removing this, just the else
-		// clause should remain
-		// really do need #220 to land before deploying this
-		clpat := regexp.MustCompile("\"content-length\"[[:space:]]*:[[:space:]]*(\\d*)")
-		fixed := clpat.ReplaceAll(*resp, []byte("\"content-length\": \"$1\""))
-		err = json.Unmarshal(fixed, &bares)
-		if err != nil {
-			return err
-		}
-	} else {
-		err = json.Unmarshal(*resp, &bares)
-		if err != nil {
-			return err
-		}
+	err = json.Unmarshal(*resp, &bares)
+	if err != nil {
+		return err
 	}
 
 	etags := make([]string, len(bares.Requests))
