@@ -1,14 +1,10 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
-	"strings"
-	"time"
 
-	"github.com/taskcluster/slugid-go/slugid"
 	tcclient "github.com/taskcluster/taskcluster-client-go"
 	"github.com/taskcluster/taskcluster-client-go/queue"
 	artifact "github.com/taskcluster/taskcluster-lib-artifact-go"
@@ -31,6 +27,23 @@ func findQueueDefaultBaseUrl() string {
 }
 
 func main() {
+	err := _main(os.Args)
+	if err == nil {
+		os.Exit(0)
+	}
+
+	if ecErr, ok := err.(cli.ExitCoder); ok {
+		os.Exit(ecErr.ExitCode())
+	}
+
+	os.Exit(ErrInternal)
+
+}
+
+func _main(args []string) error {
+	// We're going to take care of exiting ourselves
+	cli.OsExiter = func(c int) {}
+
 	app := cli.NewApp()
 
 	app.Name = "artifact"
@@ -47,6 +60,18 @@ func main() {
 	}
 
 	baseURL := findQueueDefaultBaseUrl()
+
+	app.Action = func(c *cli.Context) error {
+		cli.ShowAppHelp(c)
+		if c.NArg() == 0 {
+			return cli.NewExitError("Must specify command", ErrBadUsage)
+		}
+		return cli.NewExitError(fmt.Sprintf("%s is not a command", c.Args().Get(0)), ErrBadUsage)
+	}
+
+	app.OnUsageError = func(context *cli.Context, err error, isSubcommand bool) error {
+		return cli.NewExitError(err, ErrBadUsage)
+	}
 
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
@@ -86,6 +111,10 @@ func main() {
 			Name:  "quiet, q",
 			Usage: "supress debugging output",
 		},
+		cli.BoolFlag{
+			Name:  "allow-insecure-requests",
+			Usage: "allow insecure (http) requests. NOT RECOMMENDED",
+		},
 	}
 
 	app.Commands = []cli.Command{
@@ -119,9 +148,11 @@ func main() {
 
 				client := artifact.New(q)
 
-				fmt.Printf("%+v\n", c.Args())
+				if c.GlobalBool("allow-insecure-requests") {
+					client.AllowInsecure = true
+				}
 
-				if c.Bool("quiet") {
+				if c.GlobalBool("quiet") {
 					artifact.SetLogOutput(ioutil.Discard)
 				}
 
@@ -208,9 +239,7 @@ func main() {
 					Certificate: c.GlobalString("certificate"),
 				}))
 
-				fmt.Printf("%+v\n", c.Args())
-
-				if c.Bool("quiet") {
+				if c.GlobalBool("quiet") {
 					artifact.SetLogOutput(ioutil.Discard)
 				}
 
@@ -293,83 +322,11 @@ func main() {
 			},
 			Category: "Uploading",
 		},
-		{
-			Name:  "create-task",
-			Usage: "upload an artifact (only for testing)",
-			Action: func(c *cli.Context) error {
-				taskID := slugid.Nice()
-				taskGroupID := slugid.Nice()
-
-				// This command creates a task that has a deadline in 15 minutes
-				created := time.Now().UTC()
-				// reset nanoseconds
-				created = created.Add(time.Nanosecond * time.Duration(created.Nanosecond()*-1))
-				// deadline in one hour' time
-				deadline := created.Add(15 * time.Minute)
-				// expiry in one day, in case we need test results
-				expires := created.AddDate(0, 0, 2)
-
-				taskDef := &queue.TaskDefinitionRequest{
-					Created:      tcclient.Time(created),
-					Deadline:     tcclient.Time(deadline),
-					Expires:      tcclient.Time(expires),
-					Extra:        json.RawMessage(`{}`),
-					Dependencies: []string{},
-					Requires:     "all-completed",
-					Metadata: struct {
-						Description string `json:"description"`
-						Name        string `json:"name"`
-						Owner       string `json:"owner"`
-						Source      string `json:"source"`
-					}{
-						Description: "taskcluster-lib-artifact-go test",
-						Name:        "taskcluster-lib-artifact-go test",
-						Owner:       "taskcluster-lib-artifact-go-ci@mozilla.com",
-						Source:      "https://github.com/taskcluster/taskcluster-lib-artifact-go",
-					},
-					Payload:       json.RawMessage(`{}`),
-					ProvisionerID: "no-provisioner",
-					Retries:       1,
-					Routes:        []string{},
-					SchedulerID:   "test-scheduler",
-					Scopes:        []string{},
-					Tags:          json.RawMessage(`{"CI":"taskcluster-lib-artifact-go"}`),
-					Priority:      "lowest",
-					TaskGroupID:   taskGroupID,
-					WorkerType:    "my-workertype",
-				}
-
-				creds := &tcclient.Credentials{
-					ClientID:    c.GlobalString("client-id"),
-					AccessToken: c.GlobalString("access-token"),
-					Certificate: c.GlobalString("certificate"),
-				}
-
-				q := queue.New(creds)
-
-				_, err := q.CreateTask(taskID, taskDef)
-				if err != nil {
-					return cli.NewExitError(err, ErrInternal)
-				}
-
-				tcr := queue.TaskClaimRequest{WorkerGroup: "my-worker-group", WorkerID: "my-worker"}
-				tcres, err := q.ClaimTask(taskID, "0", &tcr)
-				if err != nil {
-					return cli.NewExitError(err, ErrInternal)
-				}
-
-				fmt.Printf("export TASKCLUSTER_CLIENT_ID=\"%s\" TASKCLUSTER_ACCESS_TOKEN=\"%s\" TASKCLUSTER_CERTIFICATE=\"%s\" TASKID=\"%s\" RUNID=\"%d\"",
-					tcres.Credentials.ClientID,
-					tcres.Credentials.AccessToken,
-					strings.Replace(tcres.Credentials.Certificate, "\"", "\\\"", -1),
-					taskID,
-					tcres.RunID,
-				)
-				return nil
-			},
-			Category: "Testing",
-		},
 	}
 
-	app.Run(os.Args)
+	err := app.Run(args)
+	if _, ok := err.(cli.ExitCoder); !ok {
+		return cli.NewExitError(err, ErrBadUsage)
+	}
+	return err
 }

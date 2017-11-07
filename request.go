@@ -188,23 +188,23 @@ func (c client) run(request request, inputReader io.Reader, chunkSize int, outpu
 	}
 
 	cs.RequestHeader = &httpRequest.Header
+	cs.RequestLength = reqBodyCounter.count
+	cs.RequestSha256 = hex.EncodeToString(reqBodyHash.Sum(nil))
 	// Run the actual request
 	resp, err := c.client.Do(httpRequest)
+	if err != nil {
+		return cs, false, err
+	}
 
 	// Reassigning the Request headers in case the http library propogates its
 	// internal modifications back.  That'd be nice!
 	cs.RequestHeader = &httpRequest.Header
-	cs.RequestLength = reqBodyCounter.count
-	cs.RequestSha256 = hex.EncodeToString(reqBodyHash.Sum(nil))
 
 	cs.Status = resp.Status
 	cs.StatusCode = resp.StatusCode
 	cs.ResponseHeader = &resp.Header
 
 	defer resp.Body.Close()
-	if err != nil {
-		return cs, false, err
-	}
 
 	// If the HTTP library reads in a different number of bytes than we're
 	// expecting to have, we know that something is wrong.  This could also be a

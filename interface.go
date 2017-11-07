@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"time"
 
 	tcclient "github.com/taskcluster/taskcluster-client-go"
@@ -36,6 +37,7 @@ type Client struct {
 	queue                   *queue.Queue
 	chunkSize               int
 	multiPartPartChunkCount int
+	AllowInsecure           bool
 }
 
 // DefaultChunkSize is 128KB
@@ -245,22 +247,33 @@ func (c *Client) Upload(taskID, runID, name string, input io.ReadSeeker, output 
 
 }
 
+type stater interface {
+	Stat() (os.FileInfo, error)
+}
+
 // Because we generate different URLs based on whether we're asking for latest
 // or not
 func (c *Client) download(u string, outputWriter io.Writer) error {
 
-	// Let's check if the output has data already, but only if the outputWriter
-	// implements the Seeker interface.  The idea here is that if we seek to the
-	// end of the io.ReadWriteSeeker and the new position is not 0, we know that
-	// there's data.  It's safe to not seek back to 0 from the io.SeekStart
-	// because we just asserted that there's 0 bytes in the io.WriteSeeker,
-	// so we know that it's position is 0
-	if seeker, ok := outputWriter.(io.Seeker); ok {
-		outSize, err := seeker.Seek(0, io.SeekEnd)
+	// If we can stat the output, let's do that and ensure it's 0 bytes
+	if s, ok := outputWriter.(stater); ok {
+		fi, err := s.Stat()
 		if err != nil {
 			return err
 		}
-		if outSize != 0 {
+		if fi.Size() != 0 {
+			return ErrBadOutputWriter
+		}
+	}
+
+	// If we can seek the output, let's seek 0 bytes from the end
+	// and determine the new offset which is the file's size
+	if s, ok := outputWriter.(io.Seeker); ok {
+		size, err := s.Seek(0, io.SeekEnd)
+		if err != nil {
+			return err
+		}
+		if size != 0 {
 			return ErrBadOutputWriter
 		}
 	}
@@ -293,7 +306,7 @@ func (c *Client) download(u string, outputWriter io.Writer) error {
 		return err
 	}
 
-	if resourceURL.Scheme != "https" {
+	if !c.AllowInsecure && resourceURL.Scheme != "https" {
 		return ErrHTTPS
 	}
 
