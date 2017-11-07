@@ -16,6 +16,13 @@ import (
 	artifact "github.com/taskcluster/taskcluster-lib-artifact-go"
 )
 
+type testEnv struct {
+	input    *os.File
+	output   *os.File
+	filename string
+	body     []byte
+}
+
 // Copied from the generic-worker's artifact tests (thanks Pete!)
 func testTask(t *testing.T, taskGroupID string) *queue.TaskDefinitionRequest {
 	created := time.Now().UTC()
@@ -57,18 +64,50 @@ func testTask(t *testing.T, taskGroupID string) *queue.TaskDefinitionRequest {
 	}
 }
 
-const filename string = "test-file"
+// Set up the test environment.  Return
+func setup(t *testing.T) (testEnv, func()) {
+	var err error
 
-// TODO: Should this still return an error or is a t.Fatal call in here enough?
-func prepareFiles(t *testing.T) []byte {
-	var buf bytes.Buffer
-	file, err := os.Create(filename)
+	env := testEnv{}
+
+	env.input, err = ioutil.TempFile(".", "test-file")
 	if err != nil {
-		t.Fatal(err)
+		t.Error(err)
 	}
+
+	env.output, err = ioutil.TempFile(".", env.input.Name()+"_output")
+	if err != nil {
+		t.Error(err)
+	}
+
+	env.body = prepareFile(t, env.input)
+
+	return env, func() {
+		err := env.input.Close()
+		if err != nil {
+			t.Error(err)
+		}
+		err = os.Remove(env.input.Name())
+		if err != nil {
+			t.Error(err)
+		}
+		err = env.output.Close()
+		if err != nil {
+			t.Error(err)
+		}
+		err = os.Remove(env.output.Name())
+		if err != nil {
+			t.Error(err)
+		}
+	}
+}
+
+func prepareFile(t *testing.T, file *os.File) []byte {
+	var buf bytes.Buffer
 	out := io.MultiWriter(file, &buf)
 
 	rbuf := make([]byte, 1024*1024) // 1MB
+
 	for i := 0; i < 10; i++ {
 		rand.Read(rbuf)
 		nBytes, err := out.Write(rbuf)
@@ -79,10 +118,13 @@ func prepareFiles(t *testing.T) []byte {
 			t.Fatalf("did not write the expected number of bytes(%d)", nBytes)
 		}
 	}
-	err = file.Close()
+
+	// Put the file back into the state we found it in
+	_, err := file.Seek(0, io.SeekStart)
 	if err != nil {
-		t.Fatal(err)
+		t.Error(err)
 	}
+
 	return buf.Bytes()
 }
 
@@ -113,20 +155,6 @@ func downloadCheck(t *testing.T, client *artifact.Client, expected []byte, taskI
 	t.Logf("Downloaded latest artifact %s-%s-%s", taskID, runID, name)
 }
 
-func createInOut(t *testing.T) (*os.File, *os.File) {
-	inFile, err := os.Open(filename)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	outFile, err := ioutil.TempFile(".", ".scratch")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	return inFile, outFile
-}
-
 // Create and claim a task, returning a pointer to a Queue which is configured
 // with the credentials for the task
 func createTask(t *testing.T, taskGroupID, taskID, runID string) *queue.Queue {
@@ -145,7 +173,6 @@ func createTask(t *testing.T, taskGroupID, taskID, runID string) *queue.Queue {
 	}
 
 	q := queue.New(creds)
-	t.Logf("TaskGroupId: %s Task ID: %s", taskGroupID, taskID)
 
 	_, err := q.CreateTask(taskID, testTask(t, taskGroupID))
 	if err != nil {
@@ -166,72 +193,43 @@ func createTask(t *testing.T, taskGroupID, taskID, runID string) *queue.Queue {
 	})
 }
 
-func TestIntegration(t *testing.T) {
-	artifact.SetLogOutput(newUnitTestLogWriter(t))
-	body := prepareFiles(t)
+func testUploadAndDownload(t *testing.T, client *artifact.Client, taskID, runID, name string, gzip, mp bool) {
+	env, teardown := setup(t)
+	defer teardown()
+	err := client.Upload(taskID, runID, name, env.input, env.output, gzip, mp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	downloadCheck(t, client, env.body, taskID, runID, name)
 
-	var err error
+}
+
+func TestUploadAndDownload(t *testing.T) {
+	artifact.SetLogOutput(newUnitTestLogWriter(t))
 
 	taskGroupID := slugid.Nice()
 	taskID := slugid.Nice()
 	runID := "0"
+
+	t.Logf("Task Group ID: %s, Task ID: %s, Run ID: %s", taskGroupID, taskID, runID)
+
 	taskQ := createTask(t, taskGroupID, taskID, runID)
 
 	client := artifact.New(taskQ)
 
-	t.Run("should be able to upload and download artifact as single part and identity", func(t *testing.T) {
-		name := "public/forced-single-part-identity"
-		t.Logf("Uploading a single part file")
-		input, output := createInOut(t)
-		defer input.Close()
-		defer output.Close()
-		defer os.Remove(output.Name())
-		err = client.Upload(taskID, runID, name, input, output, false, false)
-		if err != nil {
-			t.Fatal(err)
-		}
-		downloadCheck(t, client, body, taskID, runID, name)
+	t.Run("single part identity", func(t *testing.T) {
+		testUploadAndDownload(t, client, taskID, runID, "public/sp-id", false, false)
 	})
 
-	t.Run("should be able to upload and download artifact as multi part and identity", func(t *testing.T) {
-		name := "public/forced-multi-part-identity"
-		t.Logf("Uploading a multi-part file")
-		input, output := createInOut(t)
-		defer input.Close()
-		defer output.Close()
-		defer os.Remove(output.Name())
-		err = client.Upload(taskID, runID, name, input, output, false, true)
-		if err != nil {
-			t.Fatal(err)
-		}
-		downloadCheck(t, client, body, taskID, runID, name)
+	t.Run("multi part identity", func(t *testing.T) {
+		testUploadAndDownload(t, client, taskID, runID, "public/mp-id", false, true)
 	})
 
-	t.Run("should be able to upload and download artifact as single part and gzip", func(t *testing.T) {
-		name := "public/forced-single-part-gzip"
-		t.Logf("Uploading a single part file")
-		input, output := createInOut(t)
-		defer input.Close()
-		defer output.Close()
-		defer os.Remove(output.Name())
-		err = client.Upload(taskID, runID, name, input, output, true, false)
-		if err != nil {
-			t.Fatal(err)
-		}
-		downloadCheck(t, client, body, taskID, runID, name)
+	t.Run("single part gzip", func(t *testing.T) {
+		testUploadAndDownload(t, client, taskID, runID, "public/sp-gz", true, false)
 	})
 
-	t.Run("should be able to upload and download artifact as multi part and gzip", func(t *testing.T) {
-		name := "public/forced-multi-part-gzip"
-		t.Logf("Uploading a multi-part file")
-		input, output := createInOut(t)
-		defer input.Close()
-		defer output.Close()
-		defer os.Remove(output.Name())
-		err = client.Upload(taskID, runID, name, input, output, true, true)
-		if err != nil {
-			t.Fatal(err)
-		}
-		downloadCheck(t, client, body, taskID, runID, name)
+	t.Run("multi part gzip", func(t *testing.T) {
+		testUploadAndDownload(t, client, taskID, runID, "public/mp-gz", true, true)
 	})
 }
