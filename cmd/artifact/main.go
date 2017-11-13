@@ -20,12 +20,6 @@ const (
 // TODO implement an in memory 'file'
 // TODO implement 'redirect' and 'error' artifact types?
 
-// It would be nice if this were exposed as a package variable instead
-func findQueueDefaultBaseUrl() string {
-	q := queue.New(&tcclient.Credentials{})
-	return q.BaseURL
-}
-
 func main() {
 	err := _main(os.Args)
 	if err == nil {
@@ -59,8 +53,6 @@ func _main(args []string) error {
 		return nil
 	}
 
-	baseURL := findQueueDefaultBaseUrl()
-
 	app.Action = func(c *cli.Context) error {
 		cli.ShowAppHelp(c)
 		if c.NArg() == 0 {
@@ -93,7 +85,7 @@ func _main(args []string) error {
 			Name: "base-url",
 			//EnvVar: "QUEUE_BASE_URL",
 			Usage: "set queue's `BASE_URL`",
-			Value: baseURL,
+			Value: queue.DefaultBaseURL,
 		},
 		cli.IntFlag{
 			Name:   "chunk-size",
@@ -136,11 +128,14 @@ func _main(args []string) error {
 			ArgsUsage: "taskId runId name",
 			Action: func(c *cli.Context) error {
 				var err error
-				q := queue.New(&tcclient.Credentials{
+				q, err := queue.New(&tcclient.Credentials{
 					ClientID:    c.GlobalString("client-id"),
 					AccessToken: c.GlobalString("access-token"),
 					Certificate: c.GlobalString("certificate"),
 				})
+				if err != nil {
+					return cli.NewExitError(err, ErrBadUsage)
+				}
 
 				if c.GlobalIsSet("base-url") {
 					q.BaseURL = c.GlobalString("base-url")
@@ -217,6 +212,10 @@ func _main(args []string) error {
 					EnvVar: "ARTIFACT_TMPDIR",
 				},
 				cli.BoolFlag{
+					Name:  "gzip",
+					Usage: "serve artifact with gzip content-encoding",
+				},
+				cli.BoolFlag{
 					Name:  "multi-part",
 					Usage: "force multipart upload",
 				},
@@ -233,11 +232,17 @@ func _main(args []string) error {
 			ArgsUsage: "taskId runId name",
 			Action: func(c *cli.Context) error {
 				var err error
-				client := artifact.New(queue.New(&tcclient.Credentials{
+
+				q, err := queue.New(&tcclient.Credentials{
 					ClientID:    c.GlobalString("client-id"),
 					AccessToken: c.GlobalString("access-token"),
 					Certificate: c.GlobalString("certificate"),
-				}))
+				})
+				if err != nil {
+					return cli.NewExitError(err, ErrBadUsage)
+				}
+
+				client := artifact.New(q)
 
 				if c.GlobalBool("quiet") {
 					artifact.SetLogOutput(ioutil.Discard)
@@ -248,6 +253,10 @@ func _main(args []string) error {
 
 				if c.Bool("single-part") && c.Bool("multi-part") {
 					return cli.NewExitError("can only force single or multi part", ErrBadUsage)
+				}
+
+				if c.Bool("gzip") {
+					gzip = true
 				}
 
 				if c.Bool("single-part") {

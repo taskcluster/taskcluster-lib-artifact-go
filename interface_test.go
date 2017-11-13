@@ -21,21 +21,8 @@ func setupEnvironment() (*queue.Queue, error) {
 	// The first large amount of code is set up code to get you into the the
 	// correct task environment.  The expectation is that those using this
 	// library will already have this code set up
-	creds := &tcclient.Credentials{}
 
-	if value, present := os.LookupEnv("TASKCLUSTER_CLIENT_ID"); present {
-		creds.ClientID = value
-	}
-
-	if value, present := os.LookupEnv("TASKCLUSTER_ACCESS_TOKEN"); present {
-		creds.AccessToken = value
-	}
-
-	if value, present := os.LookupEnv("TASKCLUSTER_CERTIFICATE"); present {
-		creds.Certificate = value
-	}
-
-	q := queue.New(creds)
+	q, err := queue.New(nil)
 
 	created := time.Now().UTC()
 	// reset nanoseconds
@@ -74,7 +61,7 @@ func setupEnvironment() (*queue.Queue, error) {
 		TaskGroupID:   taskGroupID,
 		WorkerType:    "my-workertype",
 	}
-	_, err := q.CreateTask(taskID, taskDefinition)
+	_, err = q.CreateTask(taskID, taskDefinition)
 	if err != nil {
 		return nil, err
 	}
@@ -85,11 +72,14 @@ func setupEnvironment() (*queue.Queue, error) {
 		return nil, err
 	}
 
-	taskQ := queue.New(&tcclient.Credentials{
+	taskQ, err := queue.New(&tcclient.Credentials{
 		ClientID:    tcres.Credentials.ClientID,
 		AccessToken: tcres.Credentials.AccessToken,
 		Certificate: tcres.Credentials.Certificate,
 	})
+	if err != nil {
+		return nil, err
+	}
 
 	return taskQ, nil
 
@@ -174,7 +164,7 @@ func ExampleClient_Download() {
 	var output bytes.Buffer
 
 	// We don't need authenticated Queues for public downloads
-	client := New(queue.New(&tcclient.Credentials{}))
+	client := New(nil)
 
 	err := client.Download(taskID, runID, "public/single-part-gzip", &output)
 	if err != nil {
@@ -187,7 +177,7 @@ func ExampleClient_DownloadLatest() {
 	var output bytes.Buffer
 
 	// We don't need authenticated Queues for public downloads
-	client := New(queue.New(&tcclient.Credentials{}))
+	client := New(nil)
 
 	err := client.DownloadLatest(taskID, "public/single-part-gzip", &output)
 	if err != nil {

@@ -158,23 +158,12 @@ func downloadCheck(t *testing.T, client *artifact.Client, expected []byte, taskI
 // Create and claim a task, returning a pointer to a Queue which is configured
 // with the credentials for the task
 func createTask(t *testing.T, taskGroupID, taskID, runID string) *queue.Queue {
-	creds := &tcclient.Credentials{}
-
-	if value, present := os.LookupEnv("TASKCLUSTER_CLIENT_ID"); present {
-		creds.ClientID = value
+	q, err := queue.New(nil)
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	if value, present := os.LookupEnv("TASKCLUSTER_ACCESS_TOKEN"); present {
-		creds.AccessToken = value
-	}
-
-	if value, present := os.LookupEnv("TASKCLUSTER_CERTIFICATE"); present {
-		creds.Certificate = value
-	}
-
-	q := queue.New(creds)
-
-	_, err := q.CreateTask(taskID, testTask(t, taskGroupID))
+	_, err = q.CreateTask(taskID, testTask(t, taskGroupID))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -186,11 +175,15 @@ func createTask(t *testing.T, taskGroupID, taskID, runID string) *queue.Queue {
 	}
 
 	// We have to restructure the response's credentials into tcclient.Credentials
-	return queue.New(&tcclient.Credentials{
+	taskQ, err := queue.New(&tcclient.Credentials{
 		ClientID:    tcres.Credentials.ClientID,
 		AccessToken: tcres.Credentials.AccessToken,
 		Certificate: tcres.Credentials.Certificate,
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return taskQ
 }
 
 func testUploadAndDownload(t *testing.T, client *artifact.Client, taskID, runID, name string, gzip, mp bool) {

@@ -39,7 +39,7 @@ type testEnv struct {
 	t              *testing.T
 }
 
-func (e *testEnv) validate() {
+func (e testEnv) validate() {
 	f1, err := ioutil.ReadFile(e.inputFilename)
 	if err != nil {
 		e.t.Fatal(err)
@@ -49,7 +49,7 @@ func (e *testEnv) validate() {
 		e.t.Fatal(err)
 	}
 	if !bytes.Equal(f1, f2) {
-		e.t.Error("Files unexpectedly differ")
+		e.t.Error("File %s and %s unexpectedly differ", e.inputFilename, e.outputFilename)
 	}
 }
 
@@ -58,6 +58,7 @@ func setup(t *testing.T) (testEnv, func()) {
 	taskID := slugid.Nice()
 	taskGroupID := slugid.Nice()
 	tEnv.taskID = taskID
+	tEnv.t = t
 
 	input, err := ioutil.TempFile(".", "test-file-input")
 	if err != nil {
@@ -137,7 +138,10 @@ func setup(t *testing.T) (testEnv, func()) {
 		Certificate: os.Getenv("TASKCLUSTER_CERTIFICATE"),
 	}
 
-	q := queue.New(creds)
+	q, err := queue.New(creds)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	_, err = q.CreateTask(taskID, taskDef)
 	if err != nil {
@@ -148,11 +152,15 @@ func setup(t *testing.T) (testEnv, func()) {
 	tcres, err := q.ClaimTask(taskID, "0", &tcr)
 
 	tEnv.runID = strconv.FormatInt(tcres.RunID, 10)
-	tEnv.queue = queue.New(&tcclient.Credentials{
+	tEnv.queue, err = queue.New(&tcclient.Credentials{
 		ClientID:    tcres.Credentials.ClientID,
 		AccessToken: tcres.Credentials.AccessToken,
 		Certificate: tcres.Credentials.Certificate,
 	})
+
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	return tEnv, func() {
 		err := os.Remove(tEnv.inputFilename)
@@ -259,50 +267,62 @@ func TestCorruptedDownloads(t *testing.T) {
 	}
 }
 
-func TestCLI(t *testing.T) {
+func TestCLIRuns(t *testing.T) {
 	e, teardown := setup(t)
 	defer teardown()
 
-	name := "public/auto-identity"
-	run("upload", e.taskID, e.runID, name, "--input", e.inputFilename)
-	run("download", e.taskID, e.runID, name, "--output", e.outputFilename)
-	e.validate()
-	run("download", e.taskID, name, "--latest", "--output", e.outputFilename)
-	e.validate()
+	t.Run("auto-identity", func(t *testing.T) {
+		name := "public/auto-identity"
+		run("upload", e.taskID, e.runID, name, "--input", e.inputFilename)
+		run("download", e.taskID, e.runID, name, "--output", e.outputFilename)
+		e.validate()
+		run("download", e.taskID, name, "--latest", "--output", e.outputFilename)
+		e.validate()
+	})
 
-	name = "public/auto-gzip"
-	run("upload", e.taskID, e.runID, name, "--gzip", "--input", e.inputFilename)
-	run("download", e.taskID, e.runID, name, "--output", e.outputFilename)
-	e.validate()
-	run("download", e.taskID, name, "--latest", "--output", e.outputFilename)
-	e.validate()
+	t.Run("auto-gzip", func(t *testing.T) {
+		name := "public/auto-gzip"
+		run("upload", e.taskID, e.runID, name, "--gzip", "--input", e.inputFilename)
+		run("download", e.taskID, e.runID, name, "--output", e.outputFilename)
+		e.validate()
+		run("download", e.taskID, name, "--latest", "--output", e.outputFilename)
+		e.validate()
+	})
 
-	name = "public/sp-identity"
-	run("upload", e.taskID, e.runID, name, "--single-part", "--input", e.inputFilename)
-	run("download", e.taskID, e.runID, name, "--output", e.outputFilename)
-	e.validate()
-	run("download", e.taskID, name, "--latest", "--output", e.outputFilename)
-	e.validate()
+	t.Run("single-part-identity", func(t *testing.T) {
+		name := "public/sp-identity"
+		run("upload", e.taskID, e.runID, name, "--single-part", "--input", e.inputFilename)
+		run("download", e.taskID, e.runID, name, "--output", e.outputFilename)
+		e.validate()
+		run("download", e.taskID, name, "--latest", "--output", e.outputFilename)
+		e.validate()
+	})
 
-	name = "public/sp-gzip"
-	run("upload", e.taskID, e.runID, name, "--single-part", "--gzip", "--input", e.inputFilename)
-	run("download", e.taskID, e.runID, name, "--output", e.outputFilename)
-	e.validate()
-	run("download", e.taskID, name, "--latest", "--output", e.outputFilename)
-	e.validate()
+	t.Run("single-part-gzip", func(t *testing.T) {
+		name := "public/sp-gzip"
+		run("upload", e.taskID, e.runID, name, "--single-part", "--gzip", "--input", e.inputFilename)
+		run("download", e.taskID, e.runID, name, "--output", e.outputFilename)
+		e.validate()
+		run("download", e.taskID, name, "--latest", "--output", e.outputFilename)
+		e.validate()
+	})
 
-	name = "public/mp-identity"
-	run("upload", e.taskID, e.runID, name, "--multi-part", "--input", e.inputFilename)
-	run("download", e.taskID, e.runID, name, "--output", e.outputFilename)
-	e.validate()
-	run("download", e.taskID, name, "--latest", "--output", e.outputFilename)
-	e.validate()
+	t.Run("multi-part-identity", func(t *testing.T) {
+		name := "public/mp-identity"
+		run("upload", e.taskID, e.runID, name, "--multi-part", "--input", e.inputFilename)
+		run("download", e.taskID, e.runID, name, "--output", e.outputFilename)
+		e.validate()
+		run("download", e.taskID, name, "--latest", "--output", e.outputFilename)
+		e.validate()
+	})
 
-	name = "public/mp-gzip"
-	run("upload", e.taskID, e.runID, name, "--multi-part", "--gzip", "--input", e.inputFilename)
-	run("download", e.taskID, e.runID, name, "--output", e.outputFilename)
-	e.validate()
-	run("download", e.taskID, name, "--latest", "--output", e.outputFilename)
-	e.validate()
+	t.Run("multi-part-gzip", func(t *testing.T) {
+		name := "public/mp-gzip"
+		run("upload", e.taskID, e.runID, name, "--multi-part", "--gzip", "--input", e.inputFilename)
+		run("download", e.taskID, e.runID, name, "--output", e.outputFilename)
+		e.validate()
+		run("download", e.taskID, name, "--latest", "--output", e.outputFilename)
+		e.validate()
+	})
 
 }
