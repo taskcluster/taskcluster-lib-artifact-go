@@ -3,20 +3,8 @@ package artifact
 import (
 	"bytes"
 	"fmt"
+	"net/url"
 )
-
-// Error is the node type in a linked list of errors interface{}s and instances
-// of an internal type.  These errors are used to create a human readable trace
-// of things which went wrong inside of this module.
-type Error interface {
-	// Error implements the error interface
-	error
-	// SuperError() returns the error or Error this Error wraps, or nil
-	SuperError() error
-	// Message() returns only the message for this Error and does no extra
-	// formatting to create a human readable version of this error
-	Message() string
-}
 
 type artifactError struct {
 	msg   string
@@ -33,10 +21,10 @@ func newError(super error, msg string) error {
 
 func newErrorf(super error, format string, msg ...interface{}) error {
 	err := artifactError{
-		super: super,
+		super: error(super),
 		msg:   fmt.Sprintf(format, msg...),
 	}
-	return err
+	return error(err)
 }
 
 // This has to be a seperate function because we can only do type switches on
@@ -45,32 +33,43 @@ func newErrorf(super error, format string, msg ...interface{}) error {
 // receiver of a message
 func magic(e error) string {
 	var output bytes.Buffer
-	var m string
 
 	curErr := e
 
-	for i := 1; curErr != nil; i++ {
-		switch v := curErr.(type) {
-		case artifactError:
-			m = fmt.Sprintf("  %d. %s", i, v.msg)
-			curErr = v.super
-		case Error:
-			m = fmt.Sprintf("  %d. %s", i, v.Message())
-			curErr = v.SuperError()
-		case error:
-			m = fmt.Sprintf("  %d. %s", i, v.Error())
-			curErr = nil
-		default:
-			curErr = nil
-		}
-
-		_, err := output.WriteString("\n" + m)
-
-		// If we have an error in a write to an in memory buffer, let's assume
-		// that's we're out of memory.  This is probably not a great idea, but I'd
-		// like to make sure that errors in error handling are *really* noticeable
+	w := func(f string, a ...interface{}) {
+		_, err := output.WriteString("\n" + fmt.Sprintf(f, a...))
 		if err != nil {
 			panic(err)
+		}
+	}
+
+	for i := 1; curErr != nil; i++ {
+
+		// Since this error starts in our library, then moves into the
+		// standard HTTP library, anything from a url.Error starts a new
+		// set of printing.  Go error handling is atrocious!
+		//
+		// We're going to special case this.  The downside is that non-url.Error
+		// instances don't get this nicety, but the upside is that they still
+		// will have useful error messages.  I checked the stdlib and it looks
+		// like this is the only relevant special case
+		switch v := curErr.(type) {
+		case *url.Error:
+			if _, ok := v.Err.(artifactError); ok {
+				w("  %d. (%T) FAIL %s %s", i, v, v.Op, v.URL)
+				curErr = v.Err
+			} else {
+				w("  %d. (%T) FAIL %s %s", i, v, v.Op, v.URL)
+				i++
+				w("  %d. (%T) %s", i, v.Err, v.Err.Error())
+				curErr = nil
+			}
+		case artifactError:
+			w("  %d. (internal) %s", i, v.Message())
+			curErr = v.SuperError()
+		default:
+			w("  %d. (%T) %s", i, curErr, curErr.Error())
+			curErr = nil
 		}
 	}
 
