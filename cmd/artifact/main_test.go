@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
@@ -253,7 +252,6 @@ func TestCorruptedDownloads(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	fmt.Printf("%s\n", ts.URL)
 	code := run("--allow-insecure-requests", "--base-url", ts.URL, "download", e.taskID, "cli-corrupt-test", "--latest", "--output", e.outputFilename)
 
 	if code != ErrCorrupt {

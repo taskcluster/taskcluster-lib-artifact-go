@@ -68,3 +68,25 @@ func TestErrorsURLErrorWrapsInternalError(t *testing.T) {
 	testError(t, err, "Artifact Error:\n  1. (internal) outermost\n  2. (*url.Error) FAIL Op URL\n  3. (internal) wrapped\n  4. (*errors.errorString) innermost")
 
 }
+
+/*  DISABLED BECAUSE I DONT WANT TO MAKE A CALL SUMMARY BY HAND
+func TestErrorsTCErrorWrapsNonInternalError(t *testing.T) {
+	err := errors.New("innermost")
+	urlErr := &tcclient.APICallException{&tcclient.CallSummary{
+		HTTPRequest: &http.Request{},
+	}, err}
+	err = newError(urlErr, "outermost")
+	testError(t, err, "Artifact Error:\n  1. (internal) outermost\n  2. (*url.Error) FAIL Op URL\n  3. (*errors.errorString) innermost")
+
+}
+
+func TestErrorsTCErrorWrapsInternalError(t *testing.T) {
+	err := errors.New("innermost")
+	urlErr := &tcclient.APICallException{&tcclient.CallSummary{
+		HTTPRequest: &http.Request{},
+	}, newError(err, "wrapped")}
+	err = newError(urlErr, "outermost")
+	testError(t, err, "Artifact Error:\n  1. (internal) outermost\n  2. (*url.Error) FAIL Op URL\n  3. (internal) wrapped\n  4. (*errors.errorString) innermost")
+
+}
+*/

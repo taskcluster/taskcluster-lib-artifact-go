@@ -334,7 +334,7 @@ func (c *Client) download(u string, outputWriter io.Writer) error {
 	// contain the
 	cs, _, err = c.agent.run(request, nil, c.chunkSize, outputWriter, true)
 	if err != nil {
-		return newErrorf(err, "downloading %s to write to %s", request.URL, findName(outputWriter))
+		return err
 	}
 
 	if cs.StatusCode >= 300 {

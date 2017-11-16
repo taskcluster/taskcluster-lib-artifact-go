@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	"net/url"
+
+	tcclient "github.com/taskcluster/taskcluster-client-go"
 )
 
 type artifactError struct {
@@ -62,6 +64,16 @@ func magic(e error) string {
 				w("  %d. (%T) FAIL %s %s", i, v, v.Op, v.URL)
 				i++
 				w("  %d. (%T) %s", i, v.Err, v.Err.Error())
+				curErr = nil
+			}
+		case *tcclient.APICallException:
+			if _, ok := v.RootCause.(artifactError); ok {
+				w("  %d. (%T) TC-Client Error: %s %s", i, v, v.CallSummary.HTTPRequest.Method, v.CallSummary.HTTPRequest.URL.String())
+				curErr = v.RootCause
+			} else {
+				w("  %d. (%T) TC-Client Error: %s %s", i, v, v.CallSummary.HTTPRequest.Method, v.CallSummary.HTTPRequest.URL.String())
+				i++
+				w("  %d. (%T) %s", i, v.RootCause, v.RootCause.Error())
 				curErr = nil
 			}
 		case artifactError:
