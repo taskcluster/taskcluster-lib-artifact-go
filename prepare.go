@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// Part is a description of a single part of a multi-part upload
+// Part is a description of a single part of a multipart upload
 type part struct {
 	Sha256 []byte
 	Size   int64
@@ -200,7 +200,7 @@ func singlePartUpload(input io.ReadSeeker, output io.Writer, gzip bool, chunkSiz
 // copy/gzip operation from singlePartUpload is broken into parts and hashed.
 // The chunkSize and chunksInParts can be multiplied to determine the part size
 // Calling code is responsible for cleaning up whatever is written to output
-func multiPartUpload(input io.ReadSeeker, output io.ReadWriteSeeker, gzip bool, chunkSize, chunksInPart int) (upload, error) {
+func multipartUpload(input io.ReadSeeker, output io.ReadWriteSeeker, gzip bool, chunkSize, chunksInPart int) (upload, error) {
 
 	// We want to make sure we're at the start of the input
 	if _, err := input.Seek(0, io.SeekStart); err != nil {

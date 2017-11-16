@@ -215,7 +215,7 @@ func TestCLIUsage(t *testing.T) {
 	badUsage(t, "upload")
 
 	// Conflicting flags
-	badUsage(t, "upload", e.taskID, e.runID, name, "--input", e.inputFilename, "--multi-part", "--single-part")
+	badUsage(t, "upload", e.taskID, e.runID, name, "--input", e.inputFilename, "--multipart", "--single-part")
 
 	// Missing mandatory flag
 	badUsage(t, "upload", e.taskID, e.runID, name)
@@ -307,18 +307,18 @@ func TestCLIRuns(t *testing.T) {
 		e.validate()
 	})
 
-	t.Run("multi-part-identity", func(t *testing.T) {
+	t.Run("multipart-identity", func(t *testing.T) {
 		name := "public/mp-identity"
-		run("upload", e.taskID, e.runID, name, "--multi-part", "--input", e.inputFilename)
+		run("upload", e.taskID, e.runID, name, "--multipart", "--input", e.inputFilename)
 		run("download", e.taskID, e.runID, name, "--output", e.outputFilename)
 		e.validate()
 		run("download", e.taskID, name, "--latest", "--output", e.outputFilename)
 		e.validate()
 	})
 
-	t.Run("multi-part-gzip", func(t *testing.T) {
+	t.Run("multipart-gzip", func(t *testing.T) {
 		name := "public/mp-gzip"
-		run("upload", e.taskID, e.runID, name, "--multi-part", "--gzip", "--input", e.inputFilename)
+		run("upload", e.taskID, e.runID, name, "--multipart", "--gzip", "--input", e.inputFilename)
 		run("download", e.taskID, e.runID, name, "--output", e.outputFilename)
 		e.validate()
 		run("download", e.taskID, name, "--latest", "--output", e.outputFilename)

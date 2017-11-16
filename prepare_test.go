@@ -191,7 +191,7 @@ func BenchmarkPrepare(b *testing.B) {
 
 				})
 
-				b.Run(fmt.Sprintf("FileSize=%dMB ChunkSize=%dKB Gzip=%t MultiPart", fileSize, chunkSize, gzip), func(b *testing.B) {
+				b.Run(fmt.Sprintf("FileSize=%dMB ChunkSize=%dKB Gzip=%t Multipart", fileSize, chunkSize, gzip), func(b *testing.B) {
 					input, err := os.Open(filename)
 					if err != nil {
 						b.Fatal(err)
@@ -206,7 +206,7 @@ func BenchmarkPrepare(b *testing.B) {
 					defer os.Remove(output.Name())
 
 					b.ResetTimer()
-					multiPartUpload(input, output, gzip, chunkSize, 10*1024*1024/chunkSize)
+					multipartUpload(input, output, gzip, chunkSize, 10*1024*1024/chunkSize)
 					b.StopTimer()
 
 				})

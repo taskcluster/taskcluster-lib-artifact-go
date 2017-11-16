@@ -39,7 +39,7 @@ type Client struct {
 	agent                   client
 	queue                   *queue.Queue
 	chunkSize               int
-	multiPartPartChunkCount int
+	multipartPartChunkCount int
 	AllowInsecure           bool
 }
 
@@ -56,13 +56,13 @@ func New(queue *queue.Queue) *Client {
 		agent:                   a,
 		queue:                   queue,
 		chunkSize:               DefaultChunkSize,
-		multiPartPartChunkCount: DefaultPartSize,
+		multipartPartChunkCount: DefaultPartSize,
 	}
 }
 
 // SetInternalSizes sets the chunkSize and partSize .  The chunk size is the
 // number of bytes that this library will read and write in a single IO
-// operation.  In a multi-part upload, the whole file is broken into smaller
+// operation.  In a multipart upload, the whole file is broken into smaller
 // portions.  Each of these portions can be uploaded simultaneously.  For the
 // sake of simplicity, the part size must be a multiple of the chunk size so
 // that we don't have to worry about each individual read or write being split
@@ -82,14 +82,14 @@ func (c *Client) SetInternalSizes(chunkSize, partSize int) error {
 	}
 
 	c.chunkSize = chunkSize
-	c.multiPartPartChunkCount = partSize / chunkSize
+	c.multipartPartChunkCount = partSize / chunkSize
 	return nil
 }
 
 // GetInternalSizes returns the chunkSize and partSize, respectively, for this
 // Client.
 func (c *Client) GetInternalSizes() (int, int) {
-	return c.chunkSize, c.multiPartPartChunkCount * c.chunkSize
+	return c.chunkSize, c.multipartPartChunkCount * c.chunkSize
 }
 
 // Upload an artifact.  The contents of input will be copied to the beginning
@@ -133,7 +133,7 @@ func (c *Client) Upload(taskID, runID, name string, input io.ReadSeeker, output 
 	var u upload
 
 	if multipart {
-		u, err = multiPartUpload(input, output, gzip, c.chunkSize, c.multiPartPartChunkCount)
+		u, err = multipartUpload(input, output, gzip, c.chunkSize, c.multipartPartChunkCount)
 		if err != nil {
 			return err
 		}

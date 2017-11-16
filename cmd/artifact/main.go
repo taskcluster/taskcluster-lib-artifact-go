@@ -219,7 +219,7 @@ func _main(args []string) error {
 					Usage: "serve artifact with gzip content-encoding",
 				},
 				cli.BoolFlag{
-					Name:  "multi-part",
+					Name:  "multipart",
 					Usage: "force multipart upload",
 				},
 				cli.BoolFlag{
@@ -227,8 +227,8 @@ func _main(args []string) error {
 					Usage: "force single part upload",
 				},
 				cli.Int64Flag{
-					Name:  "multi-part-size",
-					Usage: "number of `MB` before starting to use multi-part uploads",
+					Name:  "multipart-size",
+					Usage: "number of `MB` before starting to use multipart uploads",
 					Value: 250,
 				},
 			},
@@ -254,7 +254,7 @@ func _main(args []string) error {
 				var gzip bool
 				var mp bool
 
-				if c.Bool("single-part") && c.Bool("multi-part") {
+				if c.Bool("single-part") && c.Bool("multipart") {
 					return cli.NewExitError("can only force single or multi part", ErrBadUsage)
 				}
 
@@ -264,7 +264,7 @@ func _main(args []string) error {
 
 				if c.Bool("single-part") {
 					mp = false
-				} else if c.Bool("multi-part") {
+				} else if c.Bool("multipart") {
 					mp = true
 				} else {
 					if fi, err := os.Stat(c.String("input")); err != nil {
@@ -274,7 +274,7 @@ func _main(args []string) error {
 						if err != nil {
 							return cli.NewExitError(err, ErrInternal)
 						}
-						mpsize := c.Int64("multi-part-size")
+						mpsize := c.Int64("multipart-size")
 						if fi.Size() >= mpsize*1024*1024 {
 							mp = true
 						}

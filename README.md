@@ -212,7 +212,7 @@ func (c *Client) SetInternalSizes(chunkSize, partSize int) error
 ```
 SetInternalSizes sets the chunkSize and partSize .  The chunk size is the
 number of bytes that this library will read and write in a single IO
-operation.  In a multi-part upload, the whole file is broken into smaller
+operation.  In a multipart upload, the whole file is broken into smaller
 portions.  Each of these portions can be uploaded simultaneously.  For the
 sake of simplicity, the part size must be a multiple of the chunk size so
 that we don't have to worry about each individual read or write being split

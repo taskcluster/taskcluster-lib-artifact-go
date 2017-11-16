@@ -148,12 +148,12 @@ func ExampleClient_Upload() {
 		panic(err)
 	}
 
-	err = client.Upload(taskID, runID, "public/multi-part-identity", input, output, false, true)
+	err = client.Upload(taskID, runID, "public/multipart-identity", input, output, false, true)
 	if err != nil {
 		panic(err)
 	}
 
-	err = client.Upload(taskID, runID, "public/multi-part-gzip", input, output, true, true)
+	err = client.Upload(taskID, runID, "public/multipart-gzip", input, output, true, true)
 	if err != nil {
 		panic(err)
 	}
