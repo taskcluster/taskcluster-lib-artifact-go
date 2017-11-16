@@ -11,10 +11,17 @@ import (
 	"github.com/urfave/cli"
 )
 
+// These are exit code constants.  They're roughly mapped to the values in
+// sysexits.h, but without the granularity availabe in the definitions of that
+// file.  We care about distinguishing between errors which are due to bad
+// usage and should not be retried ever, errors which are unexplained internal
+// issues and should be retried, and errors which are because of corruption.
+// We specifically have a corruption case because corruption might need to be
+// handled differently than other errors and so is helpful to be easy to detect
 const (
-	ErrInternal = 1
-	ErrBadUsage = 2
-	ErrCorrupt  = 13
+	ErrInternal = 70 // EX_SOFTWARE
+	ErrCorrupt  = 65 // EX_DATAERR
+	ErrBadUsage = 64 // EX_USAGE
 )
 
 // TODO implement an in memory 'file'
