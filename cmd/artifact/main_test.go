@@ -132,13 +132,7 @@ func setup(t *testing.T) (testEnv, func()) {
 		WorkerType:    "my-workertype",
 	}
 
-	creds := &tcclient.Credentials{
-		ClientID:    os.Getenv("TASKCLUSTER_CLIENT_ID"),
-		AccessToken: os.Getenv("TASKCLUSTER_ACCESS_TOKEN"),
-		Certificate: os.Getenv("TASKCLUSTER_CERTIFICATE"),
-	}
-
-	q, err := queue.New(creds)
+	q, err := queue.New(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
