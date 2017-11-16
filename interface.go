@@ -15,6 +15,9 @@ import (
 	queue "github.com/taskcluster/taskcluster-client-go/queue"
 )
 
+// TODO implement an in memory 'file'
+// TODO implement 'redirect' and 'error' artifact types?
+
 // We need this different from the request.go:request type because that struct
 // uses http.Header headers and our api returns a different type of headers.
 // This would be a great cleanup one day

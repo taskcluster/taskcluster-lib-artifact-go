@@ -24,9 +24,6 @@ const (
 	ErrBadUsage = 64 // EX_USAGE
 )
 
-// TODO implement an in memory 'file'
-// TODO implement 'redirect' and 'error' artifact types?
-
 func main() {
 	err := _main(os.Args)
 	if err == nil {
@@ -38,7 +35,6 @@ func main() {
 	}
 
 	os.Exit(ErrInternal)
-
 }
 
 func _main(args []string) error {
