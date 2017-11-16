@@ -1,7 +1,6 @@
 package artifact
 
 import (
-	"errors"
 	"fmt"
 	"io"
 )
@@ -18,14 +17,14 @@ type body struct {
 // total.
 func newBody(input io.ReadSeeker, offset, size int64) (*body, error) {
 	if size == 0 {
-		return nil, errors.New("cannot specify a size of 0")
+		return nil, newError(nil, "cannot specify a size of 0 for body")
 	}
 
 	b := body{input, nil, offset, size}
 
 	err := b.Reset()
 	if err != nil {
-		return nil, err
+		return nil, newErrorf(err, "initializing for %s", findName(input))
 	}
 
 	return &b, nil
@@ -35,8 +34,8 @@ func newBody(input io.ReadSeeker, offset, size int64) (*body, error) {
 // and resetting the internal io.LimitReader that's used to read only a certain
 // number of bytes.  This is to allow retrying of a file
 func (b *body) Reset() error {
-	if _, err := b.backingReader.Seek(b.offset, 0); err != nil {
-		return err
+	if _, err := b.backingReader.Seek(b.offset, io.SeekStart); err != nil {
+		return newErrorf(err, "seeking file %s to positiong %d", findName(b.backingReader), b.offset)
 	}
 
 	b.limitReader = io.LimitReader(b.backingReader, b.size)
@@ -55,7 +54,7 @@ func (b *body) Close() error {
 	// propogate calls to it
 	if closer, ok := b.backingReader.(io.Closer); ok {
 		if err := closer.Close(); err != nil {
-			return err
+			return newErrorf(err, "closing backing reader: %s", findName(closer))
 		}
 	}
 

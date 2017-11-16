@@ -1,6 +1,8 @@
 package artifact
 
-import "testing"
+import (
+	"testing"
+)
 
 // This is so that unit tests can get the logging output instead of logging
 // directly to stdout
@@ -9,7 +11,7 @@ type unitTestLogWriter struct {
 }
 
 func newUnitTestLogWriter(t *testing.T) unitTestLogWriter {
-	return unitTestLogWriter{t}
+	return unitTestLogWriter{t: t}
 }
 
 func (utlw unitTestLogWriter) Write(p []byte) (n int, err error) {

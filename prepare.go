@@ -4,7 +4,6 @@ import (
 	"bytes"
 	gziplib "compress/gzip"
 	"crypto/sha256"
-	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -58,7 +57,7 @@ func (u upload) String() string {
 // to be read.  Comparison can be made with bytes.Equal()
 func hashFileParts(input io.ReadSeeker, size int64, chunkSize, chunksInPart int) ([]part, []byte, error) {
 	if _, err := input.Seek(0, io.SeekStart); err != nil {
-		return []part{}, []byte{}, err
+		return []part{}, []byte{}, newErrorf(err, "failed to seek input %s", findName(input))
 	}
 
 	hash := sha256.New()
@@ -94,7 +93,7 @@ func hashFileParts(input io.ReadSeeker, size int64, chunkSize, chunksInPart int)
 		}
 
 		if err != nil {
-			return []part{}, []byte{}, err
+			return []part{}, []byte{}, newErrorf(err, "reading from %s", findName(input))
 		}
 
 		// NOTE: Per docs, this function never returns an error
@@ -135,7 +134,7 @@ func hashFileParts(input io.ReadSeeker, size int64, chunkSize, chunksInPart int)
 // Calling code is responsible for cleaning up whatever is written to output
 func singlePartUpload(input io.ReadSeeker, output io.Writer, gzip bool, chunkSize int) (upload, error) {
 	if _, err := input.Seek(0, io.SeekStart); err != nil {
-		return upload{}, err
+		return upload{}, newErrorf(err, "failed to seek input %s", findName(input))
 	}
 
 	hash := sha256.New()
@@ -156,18 +155,18 @@ func singlePartUpload(input io.ReadSeeker, output io.Writer, gzip bool, chunkSiz
 
 		contentSize, err := io.CopyBuffer(_output, input, buf)
 		if err != nil {
-			return upload{}, err
+			return upload{}, newErrorf(err, "failed to copy from %s to %s (gzip)", findName(input), findName(output))
 		}
 
 		// We need to close the gzip writer in order to get the Gzip footer.  Note
 		// that this does not close the output ReadSeeker that we passed in
 		err = gzipWriter.Flush()
 		if err != nil {
-			return upload{}, err
+			return upload{}, newErrorf(err, "failed to flush gzip writer for %s", findName(output))
 		}
 		err = gzipWriter.Close()
 		if err != nil {
-			return upload{}, err
+			return upload{}, newErrorf(err, "failed to close gzip writer for %s", findName(output))
 		}
 
 		return upload{
@@ -184,7 +183,7 @@ func singlePartUpload(input io.ReadSeeker, output io.Writer, gzip bool, chunkSiz
 
 	totalBytes, err := io.CopyBuffer(_output, input, buf)
 	if err != nil {
-		return upload{}, err
+		return upload{}, newErrorf(err, "failed to copy from %s to %s", findName(input), findName(output))
 	}
 
 	return upload{
@@ -204,36 +203,35 @@ func multipartUpload(input io.ReadSeeker, output io.ReadWriteSeeker, gzip bool, 
 
 	// We want to make sure we're at the start of the input
 	if _, err := input.Seek(0, io.SeekStart); err != nil {
-		return upload{}, err
+		return upload{}, newErrorf(err, "failed to seek input %s", findName(input))
 	}
 
 	partSize := chunkSize * chunksInPart
 
 	if partSize < 1024*1024*5 {
-		err := fmt.Errorf("partsize must be at least 5 MB, not %d", partSize)
-		return upload{}, err
+		return upload{}, newErrorf(nil, "partsize must be at least 5 MB, not %d", partSize)
 	}
 
 	// First, we'll calculate the SinglePartUpload version of this
 	u, err := singlePartUpload(input, output, gzip, chunkSize)
 	if err != nil {
-		return upload{}, err
+		return upload{}, newErrorf(err, "error handling input %s or output %s", findName(input), findName(output))
 	}
 
 	// After we've written single part file over to the new file, we need to seek
 	// back to the start so we can break it up into hash chunks
 	if _, err := output.Seek(0, io.SeekStart); err != nil {
-		return upload{}, err
+		return upload{}, newErrorf(err, "error seeking output %s back to beginning for multipart upload", findName(output))
 	}
 
 	parts, hash, err := hashFileParts(output, u.TransferSize, chunkSize, chunksInPart)
 	if err != nil {
-		return upload{}, err
+		return upload{}, newErrorf(err, "error hasing file parts of %s", findName(output))
 	}
 
 	// We want to protect against the file changing between when we copied it to the new location
 	if !bytes.Equal(hash, u.TransferSha256) {
-		return upload{}, errors.New("file changed while determining part information")
+		return upload{}, newErrorf(nil, "contents of %s changed while determining part information", findName(output))
 	}
 
 	u.Parts = parts

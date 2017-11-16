@@ -28,10 +28,10 @@ func newRequest(url, method string, headers *http.Header) request {
 func newRequestFromStringMap(url, method string, headers map[string]string) (request, error) {
 	httpHeaders := make(http.Header)
 	for k, v := range headers {
-		if httpHeaders.Get(k) == "" {
+		if ev := httpHeaders.Get(k); ev == "" { // existing value
 			httpHeaders.Set(k, v)
 		} else {
-			return request{}, fmt.Errorf("header key %s already exists", k)
+			return request{}, newErrorf(nil, "header key %s already exists with value %s", k, ev)
 		}
 	}
 	return request{url, method, &httpHeaders}, nil
@@ -159,7 +159,7 @@ func (c client) run(request request, inputReader io.Reader, chunkSize int, outpu
 
 	httpRequest, err := http.NewRequest(request.Method, request.URL, body)
 	if err != nil {
-		return cs, false, err
+		return cs, false, newErrorf(err, "making %s request to %s", request.Method, request.URL)
 	}
 
 	// If we have headers in the request, let's set them
@@ -180,7 +180,7 @@ func (c client) run(request request, inputReader io.Reader, chunkSize int, outpu
 	hadCL := false
 	if len(httpRequest.Header["Content-Length"]) > 0 {
 		if contentLength, err = strconv.ParseInt(request.Header.Get("Content-Length"), 10, 64); err != nil {
-			return cs, false, err
+			return cs, false, newErrorf(err, "parsing content-length for %s to %s", request.Method, request.URL)
 		}
 
 		httpRequest.ContentLength = contentLength
@@ -193,7 +193,7 @@ func (c client) run(request request, inputReader io.Reader, chunkSize int, outpu
 	// Run the actual request
 	resp, err := c.client.Do(httpRequest)
 	if err != nil {
-		return cs, false, err
+		return cs, false, newErrorf(err, "making %s request to %s", request.Method, request.URL)
 	}
 
 	// Reassigning the Request headers in case the http library propogates its
@@ -212,7 +212,8 @@ func (c client) run(request request, inputReader io.Reader, chunkSize int, outpu
 	// which are likely not even on the machine running this code.  Given that,
 	// let's instead treat this as local I/O corruption and mark it as retryable
 	if hadCL && httpRequest.ContentLength != reqBodyCounter.count {
-		return cs, true, fmt.Errorf("read %d bytes when we should have read %d", reqBodyCounter.count, contentLength)
+		return cs, true, newErrorf(nil, "read %d bytes from response of %s to %s when we should have read %d",
+			reqBodyCounter.count, request.Method, request.URL, contentLength)
 	}
 
 	// 500-series errors are always retryable
@@ -220,7 +221,7 @@ func (c client) run(request request, inputReader io.Reader, chunkSize int, outpu
 		if errBody, err := ioutil.ReadAll(resp.Body); err == nil {
 			logger.Printf("Retryable Error %s\nBody:\n%s", cs, errBody)
 		}
-		return cs, true, fmt.Errorf("HTTP Status: %s (retryable)", resp.Status)
+		return cs, true, newErrorf(err, "received %s (retryable)", resp.Status)
 	}
 
 	// 400-series errors are never retryable
@@ -228,7 +229,7 @@ func (c client) run(request request, inputReader io.Reader, chunkSize int, outpu
 		if errBody, err := ioutil.ReadAll(resp.Body); err == nil {
 			logger.Printf("Non-Retryable Error %s\nBody:\n%s", cs, errBody)
 		}
-		return cs, false, fmt.Errorf("HTTP Status: %s (not-retryable)", resp.Status)
+		return cs, false, newErrorf(err, "received %s (non-retryable)", resp.Status)
 	}
 
 	// We're going to need to have the Sha256 calculated of both the bytes
@@ -259,12 +260,12 @@ func (c client) run(request request, inputReader io.Reader, chunkSize int, outpu
 	case "gzip":
 		zr, err := gzip.NewReader(input)
 		if err != nil {
-			return cs, false, err
+			return cs, false, newErrorf(err, "creating gzip reader for %s to %s", request.Method, request.URL)
 		}
 		input = zr
 		logger.Printf("Resource %s %s is gzip encoded", request.Method, request.URL)
 	default:
-		return cs, false, fmt.Errorf("unexpected content-encoding: %s", enc)
+		return cs, false, newErrorf(nil, "unexpected content-encoding %s for %s to %s", enc, request.Method, request.URL)
 	}
 
 	// This io.Writer is a reference to the output stream.  This is at least the
@@ -284,7 +285,7 @@ func (c client) run(request request, inputReader io.Reader, chunkSize int, outpu
 	_, err = io.CopyBuffer(output, input, buf)
 	if err != nil {
 		// Retryable because this is likely a local issue only
-		return cs, true, err
+		return cs, true, newErrorf(err, "writing request %s to %s to output %s", request.Method, request.URL, findName(outputWriter))
 	}
 
 	transferBytes := transferCounter.count
@@ -322,7 +323,7 @@ func (c client) run(request request, inputReader io.Reader, chunkSize int, outpu
 			if err != nil {
 				// Retryable because this is a sign of corrupted data.  Let's try once
 				// more
-				return cs, true, err
+				return cs, true, newErrorf(err, "parsing %s to %s X-Amz-Meta-Content-Length header value %s to int", request.Method, request.URL, cSize)
 			}
 			expectedSize = i
 		}
@@ -335,7 +336,7 @@ func (c client) run(request request, inputReader io.Reader, chunkSize int, outpu
 			if err != nil {
 				// Retryable because this is a sign of corrupted data.  Let's try once
 				// more
-				return cs, true, err
+				return cs, true, newErrorf(err, "parsing %s to %s X-Amz-Meta-Transfer-Length header value %s to int", request.Method, request.URL, tSize)
 			}
 			expectedTransferSize = i
 		}

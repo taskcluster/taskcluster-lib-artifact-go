@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
 	"net/url"
@@ -70,15 +69,15 @@ func New(queue *queue.Queue) *Client {
 // partSize must always be a multiple of the chunkSize
 func (c *Client) SetInternalSizes(chunkSize, partSize int) error {
 	if partSize < 5*1024*1024 {
-		return errors.New("m, not %dinimum part size is 5mb")
+		return newErrorf(nil, "part size %d is not minimum of 5MB", partSize)
 	}
 
 	if chunkSize < 1024 {
-		return errors.New("chunk size must be at least 1024 bytes")
+		return newErrorf(nil, "chunk size %d is not minimum of 1KB", chunkSize)
 	}
 
 	if partSize%chunkSize != 0 {
-		return errors.New("part size must be a multiple of chunk size")
+		return newErrorf(nil, "part size %d is not divisible by chunk size %d", partSize, chunkSize)
 	}
 
 	c.chunkSize = chunkSize
@@ -107,7 +106,7 @@ func (c *Client) Upload(taskID, runID, name string, input io.ReadSeeker, output 
 	// io.ReadWriteSeeker, so we know that it's position is 0
 	outSize, err := output.Seek(0, io.SeekEnd)
 	if err != nil {
-		return err
+		return newErrorf(err, "seeking output %s to start for upload", findName(input))
 	}
 	if outSize != 0 {
 		return ErrBadOutputWriter
@@ -122,11 +121,11 @@ func (c *Client) Upload(taskID, runID, name string, input io.ReadSeeker, output 
 	mimeBuf := make([]byte, 512)
 	_, err = input.Read(mimeBuf)
 	if err != nil {
-		return err
+		return newErrorf(err, "reading 512 bytes from %s to determine mime type", findName(input))
 	}
 	_, err = output.Seek(0, io.SeekStart)
 	if err != nil {
-		return err
+		return newErrorf(err, "seeking %s back to start after determining mime type", findName(input))
 	}
 	contentType := http.DetectContentType(mimeBuf)
 
@@ -135,12 +134,12 @@ func (c *Client) Upload(taskID, runID, name string, input io.ReadSeeker, output 
 	if multipart {
 		u, err = multipartUpload(input, output, gzip, c.chunkSize, c.multipartPartChunkCount)
 		if err != nil {
-			return err
+			return newErrorf(err, "preparing multipart upload of %s to %s/%s/%s", findName(input), taskID, runID, name)
 		}
 	} else {
 		u, err = singlePartUpload(input, output, gzip, c.chunkSize)
 		if err != nil {
-			return err
+			return newErrorf(err, "preparing single-part upload of %s to %s/%s/%s", findName(input), taskID, runID, name)
 		}
 	}
 
@@ -170,21 +169,21 @@ func (c *Client) Upload(taskID, runID, name string, input io.ReadSeeker, output 
 
 	cap, err := json.Marshal(&bareq)
 	if err != nil {
-		return err
+		return newErrorf(err, "serializing json request body for createArtifact queue call during upload of %s to %s/%s/%s", findName(input), taskID, runID, name)
 	}
 
 	pareq := queue.PostArtifactRequest(json.RawMessage(cap))
 
 	resp, err := c.queue.CreateArtifact(taskID, runID, name, &pareq)
 	if err != nil {
-		return err
+		return newErrorf(err, "making createArtifact queue call during upload of %s to %s/%s/%s", findName(input), taskID, runID, name)
 	}
 
 	var bares blobArtifactResponse
 
 	err = json.Unmarshal(*resp, &bares)
 	if err != nil {
-		return err
+		return newErrorf(err, "parsing json response body for createArtifact queue call during upload of %s to %s/%s/%s", findName(input), taskID, runID, name)
 	}
 
 	etags := make([]string, len(bares.Requests))
@@ -208,29 +207,38 @@ func (c *Client) Upload(taskID, runID, name string, input io.ReadSeeker, output 
 	for i, r := range bares.Requests {
 		req, err := newRequestFromStringMap(r.URL, r.Method, r.Headers)
 		if err != nil {
-			return err
+			return newErrorf(err, "creating request %s to %s for upload of %s to %s/%s/%s", r.Method, r.URL, findName(input), taskID, runID, name)
 		}
 
 		var b *body
 
+		var start int64
+		var end int64
+
 		if u.Parts == nil {
-			b, err = newBody(output, 0, u.TransferSize)
+			start = 0
+			end = u.TransferSize
 		} else {
-			b, err = newBody(output, u.Parts[i].Start, u.Parts[i].Size)
+			start = u.Parts[i].Start
+			end = u.Parts[i].Size
 		}
+
+		b, err = newBody(output, start, end)
 		if err != nil {
-			return err
+			return newErrorf(err, "creating body for bytes %d to %d for upload of %s to %s/%s/%s", start, end, findName(input), taskID, runID, name)
 		}
 
 		// In this case, we're going to store the output of the request in memory
 		// because we're pretty sure in this method that it's going to be an S3
 		// error message and we'd like to print that
 		var outputBuf bytes.Buffer
+
 		cs, _, err := c.agent.run(req, b, c.chunkSize, &outputBuf, false)
 		if err != nil {
 			logger.Printf("%s\n%s", cs, outputBuf.String())
-			return err
+			return newErrorf(err, "reading bytes %d to %d of %s for %s to %s to upload to %s/%s/%s", start, end, findName(input), r.Method, r.URL, taskID, runID, name)
 		}
+
 		outputBuf.Reset()
 
 		etags[i] = cs.ResponseHeader.Get("etag")
@@ -242,7 +250,7 @@ func (c *Client) Upload(taskID, runID, name string, input io.ReadSeeker, output 
 
 	err = c.queue.CompleteArtifact(taskID, runID, name, &careq)
 	if err != nil {
-		return err
+		return newErrorf(err, "completing artifact upload of %s to %s/%s/%s", findName(input), taskID, runID, name)
 	}
 
 	logger.Printf("Etags: %#v", etags)
@@ -254,30 +262,36 @@ type stater interface {
 	Stat() (os.FileInfo, error)
 }
 
+// TODO split this function into a redirect and download section so that we can
+// have a download-raw function in the interface and matching command in the
+// CLI which lets us do all the verification logic on arbitrary urls
+
+// TODO Support downloading non-blob artifacts
+
 // Because we generate different URLs based on whether we're asking for latest
 // or not
 func (c *Client) download(u string, outputWriter io.Writer) error {
 
-	// If we can stat the output, let's do that and ensure it's 0 bytes
+	// If we can stat the output, let's do that and ensure it's 0 bytes,
+	// but we sholdn't fail if we're unable to actually stat the file.
 	if s, ok := outputWriter.(stater); ok {
 		fi, err := s.Stat()
-		if err != nil {
-			return err
-		}
-		if fi.Size() != 0 {
-			return ErrBadOutputWriter
+		if err == nil {
+			if fi.Size() != 0 {
+				return ErrBadOutputWriter
+			}
 		}
 	}
 
-	// If we can seek the output, let's seek 0 bytes from the end
-	// and determine the new offset which is the file's size
+	// If we can seek the output, let's seek 0 bytes from the end and determine
+	// the new offset which is the file's size, but we shouldn't fail if we can't
+	// seek the file
 	if s, ok := outputWriter.(io.Seeker); ok {
 		size, err := s.Seek(0, io.SeekEnd)
-		if err != nil {
-			return err
-		}
-		if size != 0 {
-			return ErrBadOutputWriter
+		if err == nil {
+			if size != 0 {
+				return ErrBadOutputWriter
+			}
 		}
 	}
 
@@ -288,7 +302,7 @@ func (c *Client) download(u string, outputWriter io.Writer) error {
 	cs, _, err := c.agent.run(request, nil, c.chunkSize, &redirectBuf, false)
 	if err != nil {
 		logger.Printf("%s\n%s", cs, redirectBuf.String())
-		return err
+		return newErrorf(err, "running redirect request for %s", u)
 	}
 
 	if cs.StatusCode < 300 || cs.StatusCode >= 400 {
@@ -306,7 +320,7 @@ func (c *Client) download(u string, outputWriter io.Writer) error {
 
 	resourceURL, err := url.Parse(location)
 	if err != nil {
-		return err
+		return newErrorf(err, "parsing Location header value %s for %s", location, u)
 	}
 
 	if !c.AllowInsecure && resourceURL.Scheme != "https" {
@@ -320,7 +334,7 @@ func (c *Client) download(u string, outputWriter io.Writer) error {
 	// contain the
 	cs, _, err = c.agent.run(request, nil, c.chunkSize, outputWriter, true)
 	if err != nil {
-		return err
+		return newErrorf(err, "downloading %s to write to %s", request.URL, findName(outputWriter))
 	}
 
 	if cs.StatusCode >= 300 {
@@ -347,7 +361,7 @@ func (c *Client) Download(taskID, runID, name string, output io.Writer) error {
 	// TODO: How long should this signed url really be valid for?
 	url, err := c.queue.GetArtifact_SignedURL(taskID, runID, name, time.Duration(3)*time.Hour)
 	if err != nil {
-		return err
+		return newErrorf(err, "creating signed URL for %s/%s/%s", taskID, runID, name)
 	}
 
 	return c.download(url.String(), output)
@@ -371,6 +385,7 @@ func (c *Client) DownloadLatest(taskID, name string, output io.Writer) error {
 	// TODO: How long should this signed url really be valid for?
 	url, err := c.queue.GetLatestArtifact_SignedURL(taskID, name, time.Duration(1)*time.Hour)
 	if err != nil {
+		return newErrorf(err, "creating signed URL for %s/latest/%s", taskID, name)
 		return err
 	}
 
