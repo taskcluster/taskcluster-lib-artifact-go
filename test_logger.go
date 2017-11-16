@@ -11,6 +11,7 @@ type unitTestLogWriter struct {
 }
 
 func newUnitTestLogWriter(t *testing.T) unitTestLogWriter {
+	SetLogPrefix("")
 	return unitTestLogWriter{t: t}
 }
 

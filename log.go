@@ -11,7 +11,7 @@ import (
 // get useful logs for debugging.  We do, however, want to allow the users to
 // change where logging should go, so we'll expose methods to change the
 // behaviour of logging.
-var logger = log.New(os.Stdout, "artifact:", log.LUTC)
+var logger = log.New(os.Stdout, "artifacts:", log.Ldate|log.Ltime|log.Lshortfile|log.LUTC)
 
 // SetLogOutput will change the prefix used by logs in this package This is a
 // simple convenience method to wrap this package's Logger instance's method.

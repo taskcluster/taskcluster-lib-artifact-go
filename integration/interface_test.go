@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"io"
 	"io/ioutil"
-	"log"
 	"os"
 	"testing"
 	"time"
@@ -195,12 +194,11 @@ func testUploadAndDownload(t *testing.T, client *artifact.Client, taskID, runID,
 		t.Fatal(err)
 	}
 	downloadCheck(t, client, env.body, taskID, runID, name)
-
 }
 
 func TestUploadAndDownload(t *testing.T) {
 	artifact.SetLogOutput(newUnitTestLogWriter(t))
-	artifact.SetLogFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.Llongfile)
+	artifact.SetLogPrefix("")
 
 	taskGroupID := slugid.Nice()
 	taskID := slugid.Nice()

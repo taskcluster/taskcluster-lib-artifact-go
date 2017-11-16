@@ -94,10 +94,18 @@ type callSummary struct {
 
 func (cs callSummary) String() string {
 	var reqHBuf bytes.Buffer
-	cs.RequestHeader.Write(&reqHBuf)
+	if cs.RequestHeader != nil {
+		cs.RequestHeader.Write(&reqHBuf)
+	} else {
+		reqHBuf.Write([]byte("No Request Headers"))
+	}
 
 	var resHBuf bytes.Buffer
-	cs.ResponseHeader.Write(&resHBuf)
+	if cs.ResponseHeader != nil {
+		cs.ResponseHeader.Write(&resHBuf)
+	} else {
+		resHBuf.Write([]byte("No Response Headers"))
+	}
 
 	var verified string
 	if cs.Verified {
@@ -134,7 +142,6 @@ func (cs callSummary) String() string {
 // failure.  Example of a non-retryable error would be getting passed in a
 // request which has an unparsable Content-Length header
 func (c client) run(request request, inputReader io.Reader, chunkSize int, outputWriter io.Writer, verify bool) (callSummary, bool, error) {
-
 	cs := callSummary{}
 	cs.URL = request.URL
 	cs.Method = request.Method
@@ -193,7 +200,7 @@ func (c client) run(request request, inputReader io.Reader, chunkSize int, outpu
 	// Run the actual request
 	resp, err := c.client.Do(httpRequest)
 	if err != nil {
-		return cs, false, newErrorf(err, "making %s request to %s", request.Method, request.URL)
+		return cs, false, newErrorf(err, "running %s request to %s", request.Method, request.URL)
 	}
 
 	// Reassigning the Request headers in case the http library propogates its
@@ -216,7 +223,6 @@ func (c client) run(request request, inputReader io.Reader, chunkSize int, outpu
 			reqBodyCounter.count, request.Method, request.URL, contentLength)
 	}
 
-	// 500-series errors are always retryable
 	if resp.StatusCode >= 500 {
 		if errBody, err := ioutil.ReadAll(resp.Body); err == nil {
 			logger.Printf("Retryable Error %s\nBody:\n%s", cs, errBody)
