@@ -59,7 +59,12 @@ func setup(t *testing.T) (testEnv, func()) {
 	tEnv.taskID = taskID
 	tEnv.t = t
 
-	input, err := ioutil.TempFile(".", "test-file-input")
+	err := os.MkdirAll("testdata", 0777)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	input, err := ioutil.TempFile("testdata", "test-file-input")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +86,7 @@ func setup(t *testing.T) (testEnv, func()) {
 		t.Fatal(err)
 	}
 
-	output, err := ioutil.TempFile(".", "test-file-output")
+	output, err := ioutil.TempFile("testdata", "test-file-output")
 	if err != nil {
 		t.Fatal(err)
 	}

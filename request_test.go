@@ -59,7 +59,7 @@ func TestRequestRunning(t *testing.T) {
 
 	client := newAgent()
 
-	filename := "test-files/request.dat"
+	filename := "testdata/request.dat"
 
 	// We want to do a little bit of setup before running the tests
 	if fi, err := os.Stat(filename); os.IsNotExist(err) || fi.Size() != 10*1024*1024 {

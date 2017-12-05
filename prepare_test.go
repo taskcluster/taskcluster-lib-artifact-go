@@ -36,7 +36,7 @@ func testUpload(t *testing.T, gzip bool, mp bool, filename string) {
 	}
 	defer input.Close()
 
-	output, err := ioutil.TempFile("test-files", "sp-gz_")
+	output, err := ioutil.TempFile("testdata", "sp-gz_")
 
 	t.Log(output.Name())
 	if err != nil {
@@ -104,7 +104,7 @@ func TestUploadPreperation(t *testing.T) {
 
 	SetLogOutput(newUnitTestLogWriter(t))
 
-	filename := "test-files/10mb.dat"
+	filename := "testdata/10mb.dat"
 
 	// We want to do a little bit of setup before running the tests
 	if fi, err := os.Stat(filename); os.IsNotExist(err) || fi.Size() != 10*1024*1024 {
@@ -154,7 +154,7 @@ func BenchmarkPrepare(b *testing.B) {
 
 	for _, gzip := range []bool{false, true} {
 		for _, fileSize := range fileSizes {
-			filename := fmt.Sprintf("test-files/%d-mb.dat", fileSize)
+			filename := fmt.Sprintf("testdata/%d-mb.dat", fileSize)
 			createFile, err := os.Create(filename)
 			if err != nil {
 				b.Fatal(err)

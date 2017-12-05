@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -25,6 +26,8 @@ const (
 )
 
 func main() {
+	e := errors.New("Stack, please")
+	thething(e)
 	err := _main(os.Args)
 	if err == nil {
 		os.Exit(0)
@@ -35,6 +38,10 @@ func main() {
 	}
 
 	os.Exit(ErrInternal)
+}
+
+func thething(err error) {
+	panic(err)
 }
 
 func _main(args []string) error {

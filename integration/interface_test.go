@@ -70,7 +70,12 @@ func setup(t *testing.T) (testEnv, func()) {
 
 	env := testEnv{}
 
-	env.input, err = ioutil.TempFile(".", "test-file")
+	err = os.MkdirAll("testdata", 0777)
+	if err != nil {
+		t.Error(err)
+	}
+
+	env.input, err = ioutil.TempFile("testdata", "test-file")
 	if err != nil {
 		t.Error(err)
 	}
