@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -26,8 +25,6 @@ const (
 )
 
 func main() {
-	e := errors.New("Stack, please")
-	thething(e)
 	err := _main(os.Args)
 	if err == nil {
 		os.Exit(0)
@@ -38,10 +35,6 @@ func main() {
 	}
 
 	os.Exit(ErrInternal)
-}
-
-func thething(err error) {
-	panic(err)
 }
 
 func _main(args []string) error {
@@ -127,7 +120,7 @@ func _main(args []string) error {
 			Flags: []cli.Flag{
 				cli.StringFlag{
 					Name:   "output, o",
-					Usage:  "`FILENAME` to write output to.  If not provided, Standard Output will be assumed",
+					Usage:  "`FILENAME` to write output to.  Value '-' writes to stdout",
 					EnvVar: "ARTIFACT_OUTPUT",
 				},
 				cli.BoolFlag{
@@ -174,11 +167,17 @@ func _main(args []string) error {
 					return cli.NewExitError("must specify output", ErrBadUsage)
 				}
 
-				output, err := os.Create(c.String("output"))
-				if err != nil {
-					return cli.NewExitError(err, ErrInternal)
+				var output *os.File
+
+				if c.String("output") == "-" {
+					output, err := os.Create(c.String("output"))
+					if err != nil {
+						return cli.NewExitError(err, ErrInternal)
+					}
+					defer output.Close()
+				} else {
+					output = os.Stdout
 				}
-				defer output.Close()
 
 				if c.Bool("latest") {
 					if c.NArg() != 2 {
