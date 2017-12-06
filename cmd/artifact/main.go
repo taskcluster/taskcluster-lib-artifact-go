@@ -21,7 +21,6 @@ import (
 const (
 	ErrInternal = 70 // EX_SOFTWARE
 	ErrCorrupt  = 65 // EX_DATAERR
-	ErrBadUsage = 64 // EX_USAGE
 )
 
 func main() {
@@ -48,25 +47,19 @@ func _main(args []string) error {
 	app.Usage = "interact with taskcluster artifacts"
 
 	app.OnUsageError = func(c *cli.Context, err error, isSubcommand bool) error {
-		if isSubcommand {
-			return err
-		}
-
-		fmt.Fprintf(c.App.Writer, "WRONG: %#v\n", err)
-		return nil
+		return cli.NewExitError(err.Error(), ErrInternal)
 	}
 
 	app.Action = func(c *cli.Context) error {
 		cli.ShowAppHelp(c)
 		if c.NArg() == 0 {
-			return cli.NewExitError("Must specify command", ErrBadUsage)
+			return cli.NewExitError("Must specify command", ErrInternal)
 		}
-		return cli.NewExitError(fmt.Sprintf("%s is not a command", c.Args().Get(0)), ErrBadUsage)
+		return cli.NewExitError(fmt.Sprintf("%s is not a command", c.Args().Get(0)), ErrInternal)
 	}
 
 	app.OnUsageError = func(context *cli.Context, err error, isSubcommand bool) error {
-		fmt.Printf("Usage Error: %s\n", err)
-		return cli.NewExitError(err.Error(), ErrBadUsage)
+		return cli.NewExitError(err.Error(), ErrInternal)
 	}
 
 	app.Flags = []cli.Flag{
@@ -128,21 +121,26 @@ func _main(args []string) error {
 					Name:  "latest",
 					Usage: "request artifact from latest run",
 				},
-				cli.BoolFlag{
-					Name:  "url",
-					Usage: "use a raw Queue URL instead of specifying taskid, runid or name",
+				cli.StringFlag{
+					Name:   "url",
+					Usage:  "use a raw Queue URL instead of specifying taskid, runid or name",
+					EnvVar: "ARTIFACT_URL",
 				},
 			},
 			ArgsUsage: "taskId runId name",
 			Action: func(c *cli.Context) error {
 				var err error
+				if c.IsSet("latest") && c.IsSet("url") {
+					return cli.NewExitError("Cannot specify --latest and --url", ErrInternal)
+				}
+
 				q, err := queue.New(&tcclient.Credentials{
 					ClientID:    c.GlobalString("client-id"),
 					AccessToken: c.GlobalString("access-token"),
 					Certificate: c.GlobalString("certificate"),
 				})
 				if err != nil {
-					return cli.NewExitError(err.Error(), ErrBadUsage)
+					return cli.NewExitError(err.Error(), ErrInternal)
 				}
 
 				if c.GlobalIsSet("base-url") {
@@ -150,6 +148,15 @@ func _main(args []string) error {
 				}
 
 				client := artifact.New(q)
+
+				if c.GlobalIsSet("chunk-size") {
+					cz := c.GlobalInt("chunk-size")
+					_, ps := client.GetInternalSizes()
+					err := client.SetInternalSizes(cz*1024, ps)
+					if err != nil {
+						return cli.NewExitError(err.Error(), ErrInternal)
+					}
+				}
 
 				if c.GlobalBool("allow-insecure-requests") {
 					client.AllowInsecure = true
@@ -159,17 +166,8 @@ func _main(args []string) error {
 					artifact.SetLogOutput(ioutil.Discard)
 				}
 
-				if c.GlobalIsSet("chunk-size") {
-					cz := c.GlobalInt("chunk-size")
-					_, ps := client.GetInternalSizes()
-					err := client.SetInternalSizes(cz*1024, ps)
-					if err != nil {
-						return cli.NewExitError(err.Error(), ErrBadUsage)
-					}
-				}
-
 				if !c.IsSet("output") {
-					return cli.NewExitError("must specify output", ErrBadUsage)
+					return cli.NewExitError("must specify output", ErrInternal)
 				}
 
 				var output *os.File
@@ -184,40 +182,32 @@ func _main(args []string) error {
 					output = os.Stdout
 				}
 
-				if c.Bool("latest") {
-					if c.Bool("url") {
-						return cli.NewExitError("--latest and --url are mutually exclusive", ErrBadUsage)
+				if c.IsSet("url") {
+					if c.NArg() != 0 {
+						msg := fmt.Sprintf("--url requires zero arguments, received %v", c.Args())
+						return cli.NewExitError(msg, ErrInternal)
 					}
+					err = client.DownloadURL(c.String("url"), output)
+				} else if c.Bool("latest") {
 					if c.NArg() != 2 {
 						msg := fmt.Sprintf("--latest requires two arguments, received %v", c.Args())
-						return cli.NewExitError(msg, ErrBadUsage)
+						return cli.NewExitError(msg, ErrInternal)
 					}
 					err = client.DownloadLatest(c.Args().Get(0), c.Args().Get(1), output)
-				} else if c.Bool("url") {
-					if c.NArg() != 1 {
-						msg := fmt.Sprintf("--url requires one argument, received %v", c.Args())
-						return cli.NewExitError(msg, ErrBadUsage)
-					}
-					err = client.DownloadURL(c.Args().Get(0), output)
 				} else {
 					if c.NArg() != 3 {
 						msg := fmt.Sprintf("three arguments, received %v", c.Args())
-						return cli.NewExitError(msg, ErrBadUsage)
+						return cli.NewExitError(msg, ErrInternal)
 					}
 					err = client.Download(c.Args().Get(0), c.Args().Get(1), c.Args().Get(2), output)
 
 				}
 
-				switch err {
-				case nil:
-					return nil
-				case artifact.ErrBadOutputWriter:
-					return cli.NewExitError(err.Error(), ErrBadUsage)
-				case artifact.ErrCorrupt:
+				if err == artifact.ErrCorrupt {
 					return cli.NewExitError(err.Error(), ErrCorrupt)
-				default:
-					return cli.NewExitError(err.Error(), ErrInternal)
 				}
+
+				return err
 			},
 			Category: "Downloading",
 		},
@@ -264,7 +254,7 @@ func _main(args []string) error {
 					Certificate: c.GlobalString("certificate"),
 				})
 				if err != nil {
-					return cli.NewExitError(err.Error(), ErrBadUsage)
+					return cli.NewExitError(err.Error(), ErrInternal)
 				}
 
 				client := artifact.New(q)
@@ -277,7 +267,7 @@ func _main(args []string) error {
 				var mp bool
 
 				if c.Bool("single-part") && c.Bool("multipart") {
-					return cli.NewExitError("can only force single or multi part", ErrBadUsage)
+					return cli.NewExitError("can only force single or multi part", ErrInternal)
 				}
 
 				if c.Bool("gzip") {
@@ -291,7 +281,7 @@ func _main(args []string) error {
 				} else {
 					if fi, err := os.Stat(c.String("input")); err != nil {
 						if os.IsNotExist(err) {
-							return cli.NewExitError("input does not exist", ErrBadUsage)
+							return cli.NewExitError("input does not exist", ErrInternal)
 						}
 						if err != nil {
 							return cli.NewExitError(err.Error(), ErrInternal)
@@ -308,7 +298,7 @@ func _main(args []string) error {
 					_, ps := client.GetInternalSizes()
 					err := client.SetInternalSizes(cz*1024, ps)
 					if err != nil {
-						return cli.NewExitError(err.Error(), ErrBadUsage)
+						return cli.NewExitError(err.Error(), ErrInternal)
 					}
 				}
 
@@ -317,17 +307,17 @@ func _main(args []string) error {
 					cz, _ := client.GetInternalSizes()
 					err := client.SetInternalSizes(cz, ps*1024*1024)
 					if err != nil {
-						return cli.NewExitError(err.Error(), ErrBadUsage)
+						return cli.NewExitError(err.Error(), ErrInternal)
 					}
 				}
 
 				if !c.IsSet("input") {
-					return cli.NewExitError("must specify input", ErrBadUsage)
+					return cli.NewExitError("must specify input", ErrInternal)
 				}
 
 				input, err := os.Open(c.String("input"))
 				if err != nil {
-					return cli.NewExitError(err.Error(), ErrBadUsage)
+					return cli.NewExitError(err.Error(), ErrInternal)
 				}
 				defer input.Close()
 
@@ -342,20 +332,15 @@ func _main(args []string) error {
 
 				if c.NArg() != 3 {
 					msg := fmt.Sprintf("three arguments, received %v", c.Args())
-					return cli.NewExitError(msg, ErrBadUsage)
+					return cli.NewExitError(msg, ErrInternal)
 				}
 				err = client.Upload(c.Args().Get(0), c.Args().Get(1), c.Args().Get(2), input, output, gzip, mp)
 
-				switch err {
-				case nil:
-					return nil
-				case artifact.ErrBadOutputWriter:
-					return cli.NewExitError(err.Error(), ErrBadUsage)
-				case artifact.ErrCorrupt:
+				if err == artifact.ErrCorrupt {
 					return cli.NewExitError(err.Error(), ErrCorrupt)
-				default:
-					return cli.NewExitError(err.Error(), ErrInternal)
 				}
+
+				return err
 			},
 			Category: "Uploading",
 		},

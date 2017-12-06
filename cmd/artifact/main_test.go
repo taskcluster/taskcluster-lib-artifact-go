@@ -195,22 +195,6 @@ func badUsage(t *testing.T, args ...string) {
 		if err == nil {
 			t.Fatalf("%s did not fail as expected", fullargs)
 		}
-
-		var code int
-
-		if ecErr, ok := err.(cli.ExitCoder); ok {
-			code = ecErr.ExitCode()
-		} else {
-			code = -1
-		}
-
-		if code == -1 {
-			t.Fatalf("Command \"%s\" returned incorrect err type", strings.Join(args, "\", \""))
-		}
-
-		if code != ErrBadUsage {
-			t.Fatalf("Command \"%s\" failed with %d instead of %d (ErrBadUsage)", strings.Join(args, "\", \""), code, ErrBadUsage)
-		}
 	})
 }
 
