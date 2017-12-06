@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"os"
 
+	"github.com/alecthomas/units"
 	tcclient "github.com/taskcluster/taskcluster-client-go"
 	"github.com/taskcluster/taskcluster-client-go/queue"
 	artifact "github.com/taskcluster/taskcluster-lib-artifact-go"
@@ -79,21 +80,21 @@ func _main(args []string) error {
 			Usage:  "set certificate to `CERTIFICATE`",
 		},
 		cli.StringFlag{
-			Name: "base-url",
-			//EnvVar: "QUEUE_BASE_URL",
-			Usage: "set queue's `BASE_URL`",
-			Value: queue.DefaultBaseURL,
+			Name:   "base-url",
+			EnvVar: "QUEUE_BASE_URL",
+			Usage:  "set queue's `BASE_URL`",
+			Value:  queue.DefaultBaseURL,
 		},
-		cli.IntFlag{
+		cli.StringFlag{
 			Name:   "chunk-size",
-			Usage:  "set the I/O chunk size to `CHUNK_SIZE` KB",
-			Value:  artifact.DefaultChunkSize / 1024,
+			Usage:  "set the I/O chunk size to `CHUNK_SIZE`",
+			Value:  fmt.Sprintf("%d KB", artifact.DefaultChunkSize),
 			EnvVar: "ARTIFACT_CHUNK_SIZE",
 		},
-		cli.IntFlag{
+		cli.StringFlag{
 			Name:   "part-size",
-			Usage:  "set the I/O chunk size to `PART_SIZE` MB",
-			Value:  artifact.DefaultPartSize * artifact.DefaultChunkSize / 1024 / 1024,
+			Usage:  "set the I/O chunk size to `PART_SIZE`",
+			Value:  fmt.Sprintf("%d MB", artifact.DefaultPartSize*artifact.DefaultChunkSize),
 			EnvVar: "ARTIFACT_PART_SIZE",
 		},
 		cli.BoolFlag{
@@ -150,9 +151,12 @@ func _main(args []string) error {
 				client := artifact.New(q)
 
 				if c.GlobalIsSet("chunk-size") {
-					cz := c.GlobalInt("chunk-size")
+					cz, err := units.ParseBase2Bytes(c.String("chunk-size"))
+					if err != nil {
+						return cli.NewExitError(err.Error(), ErrInternal)
+					}
 					_, ps := client.GetInternalSizes()
-					err := client.SetInternalSizes(cz*1024, ps)
+					err = client.SetInternalSizes(int(cz), ps)
 					if err != nil {
 						return cli.NewExitError(err.Error(), ErrInternal)
 					}
@@ -238,10 +242,10 @@ func _main(args []string) error {
 					Name:  "single-part",
 					Usage: "force single part upload",
 				},
-				cli.Int64Flag{
-					Name:  "multipart-size",
-					Usage: "number of `MB` before starting to use multipart uploads",
-					Value: 250,
+				cli.StringFlag{
+					Name:  "multipart-part-size",
+					Usage: "number of bytes before starting to use multi-part uploads",
+					Value: "250 MB",
 				},
 			},
 			ArgsUsage: "taskId runId name",
@@ -286,26 +290,35 @@ func _main(args []string) error {
 						if err != nil {
 							return cli.NewExitError(err.Error(), ErrInternal)
 						}
-						mpsize := c.Int64("multipart-size")
-						if fi.Size() >= mpsize*1024*1024 {
+						mpsize, err := units.ParseBase2Bytes(c.String("multi-part-size"))
+						if err != nil {
+							return err
+						}
+						if fi.Size() >= int64(mpsize) {
 							mp = true
 						}
 					}
 				}
 
 				if c.GlobalIsSet("chunk-size") {
-					cz := c.GlobalInt("chunk-size")
+					cz, err := units.ParseBase2Bytes(c.String("chunk-size"))
+					if err != nil {
+						return cli.NewExitError(err.Error(), ErrInternal)
+					}
 					_, ps := client.GetInternalSizes()
-					err := client.SetInternalSizes(cz*1024, ps)
+					err = client.SetInternalSizes(int(cz), ps)
 					if err != nil {
 						return cli.NewExitError(err.Error(), ErrInternal)
 					}
 				}
 
 				if c.GlobalIsSet("part-size") {
-					ps := c.GlobalInt("part-size")
+					ps, err := units.ParseBase2Bytes(c.String("part-size"))
+					if err != nil {
+						return cli.NewExitError(err.Error(), ErrInternal)
+					}
 					cz, _ := client.GetInternalSizes()
-					err := client.SetInternalSizes(cz, ps*1024*1024)
+					err = client.SetInternalSizes(cz, int(ps))
 					if err != nil {
 						return cli.NewExitError(err.Error(), ErrInternal)
 					}
