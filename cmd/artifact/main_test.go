@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
@@ -172,25 +173,37 @@ func setup(t *testing.T) (testEnv, func()) {
 	}
 }
 
-func run(args ...string) int {
+func run(t *testing.T, args ...string) {
 	fullargs := append([]string{"artifact", "-q"}, args...)
 	err := _main(fullargs)
-
-	if ecErr, ok := err.(cli.ExitCoder); ok {
-		return ecErr.ExitCode()
+	if ecErr, ok := err.(*cli.ExitError); ok {
+		if ecErr != nil {
+			t.Fatal(ecErr)
+		}
 	}
-
 	if err != nil {
-		return -1
+		t.Fatal(err)
 	}
-
-	return 0
-
 }
 
 func badUsage(t *testing.T, args ...string) {
 	t.Run(strings.Join(args, "_"), func(t *testing.T) {
-		code := run(args...)
+		fullargs := append([]string{"artifact", "-q"}, args...)
+
+		err := _main(fullargs)
+
+		if err == nil {
+			t.Fatalf("%s did not fail as expected", fullargs)
+		}
+
+		var code int
+
+		if ecErr, ok := err.(cli.ExitCoder); ok {
+			code = ecErr.ExitCode()
+		} else {
+			code = -1
+		}
+
 		if code == -1 {
 			t.Fatalf("Command \"%s\" returned incorrect err type", strings.Join(args, "\", \""))
 		}
@@ -222,6 +235,7 @@ func TestCLIUsage(t *testing.T) {
 	// Wrong flags
 	badUsage(t, "upload", e.taskID, e.runID, name, "--output", e.inputFilename)
 	badUsage(t, "download", e.taskID, e.runID, name, "--input", e.outputFilename)
+	badUsage(t, "download", "--url", "--latest", "--output", e.outputFilename)
 }
 
 func TestCorruptedDownloads(t *testing.T) {
@@ -257,10 +271,29 @@ func TestCorruptedDownloads(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	code := run("--allow-insecure-requests", "--base-url", ts.URL, "download", e.taskID, "cli-corrupt-test", "--latest", "--output", e.outputFilename)
+	fmt.Printf("%s\n", ts.URL)
+	args := []string{
+		"artifact",
+		"-q",
+		"--allow-insecure-requests",
+		"--base-url",
+		ts.URL,
+		"download",
+		e.taskID,
+		"cli-corrupt-test",
+		"--latest",
+		"--output",
+		e.outputFilename,
+	}
+	err = _main(args)
 
-	if code != ErrCorrupt {
-		t.Error("Corrupt download did not fail as expected")
+	if ecErr, ok := err.(cli.ExitCoder); ok {
+		code := ecErr.ExitCode()
+		if code != ErrCorrupt {
+			t.Fatalf("Error code %d from %v was not expected %d", code, args, ErrCorrupt)
+		}
+	} else {
+		t.Fatalf("Error %v not expected for %v", err, args)
 	}
 }
 
@@ -270,61 +303,70 @@ func TestCLIRuns(t *testing.T) {
 
 	t.Run("auto-identity", func(t *testing.T) {
 		name := "public/auto-identity"
-		run("upload", e.taskID, e.runID, name, "--input", e.inputFilename)
-		run("download", e.taskID, e.runID, name, "--output", e.outputFilename)
+		run(t, "upload", e.taskID, e.runID, name, "--input", e.inputFilename)
+		run(t, "download", e.taskID, e.runID, name, "--output", e.outputFilename)
 		e.validate()
-		run("download", e.taskID, name, "--latest", "--output", e.outputFilename)
+		run(t, "download", e.taskID, name, "--latest", "--output", e.outputFilename)
 		e.validate()
 	})
 
 	t.Run("auto-gzip", func(t *testing.T) {
 		name := "public/auto-gzip"
-		run("upload", e.taskID, e.runID, name, "--gzip", "--input", e.inputFilename)
-		run("download", e.taskID, e.runID, name, "--output", e.outputFilename)
+		run(t, "upload", e.taskID, e.runID, name, "--gzip", "--input", e.inputFilename)
+		run(t, "download", e.taskID, e.runID, name, "--output", e.outputFilename)
 		e.validate()
-		run("download", e.taskID, name, "--latest", "--output", e.outputFilename)
+		run(t, "download", e.taskID, name, "--latest", "--output", e.outputFilename)
 		e.validate()
 	})
 
 	t.Run("single-part-identity", func(t *testing.T) {
 		name := "public/sp-identity"
-		run("upload", e.taskID, e.runID, name, "--single-part", "--input", e.inputFilename)
-		run("download", e.taskID, e.runID, name, "--output", e.outputFilename)
+		run(t, "upload", e.taskID, e.runID, name, "--single-part", "--input", e.inputFilename)
+		run(t, "download", e.taskID, e.runID, name, "--output", e.outputFilename)
 		e.validate()
-		run("download", e.taskID, name, "--latest", "--output", e.outputFilename)
+		run(t, "download", e.taskID, name, "--latest", "--output", e.outputFilename)
 		e.validate()
 	})
 
 	t.Run("single-part-gzip", func(t *testing.T) {
 		name := "public/sp-gzip"
-		run("upload", e.taskID, e.runID, name, "--single-part", "--gzip", "--input", e.inputFilename)
-		run("download", e.taskID, e.runID, name, "--output", e.outputFilename)
+		run(t, "upload", e.taskID, e.runID, name, "--single-part", "--gzip", "--input", e.inputFilename)
+		run(t, "download", e.taskID, e.runID, name, "--output", e.outputFilename)
 		e.validate()
-		run("download", e.taskID, name, "--latest", "--output", e.outputFilename)
+		run(t, "download", e.taskID, name, "--latest", "--output", e.outputFilename)
 		e.validate()
 	})
 
 	t.Run("multipart-identity", func(t *testing.T) {
 		name := "public/mp-identity"
-		run("upload", e.taskID, e.runID, name, "--multipart", "--input", e.inputFilename)
-		run("download", e.taskID, e.runID, name, "--output", e.outputFilename)
+		run(t, "upload", e.taskID, e.runID, name, "--multi-part", "--input", e.inputFilename)
+		run(t, "download", e.taskID, e.runID, name, "--output", e.outputFilename)
 		e.validate()
-		run("download", e.taskID, name, "--latest", "--output", e.outputFilename)
+		run(t, "download", e.taskID, name, "--latest", "--output", e.outputFilename)
 		e.validate()
 	})
 
 	t.Run("multipart-gzip", func(t *testing.T) {
 		name := "public/mp-gzip"
-		run("upload", e.taskID, e.runID, name, "--multipart", "--gzip", "--input", e.inputFilename)
-		run("download", e.taskID, e.runID, name, "--output", e.outputFilename)
+		run(t, "upload", e.taskID, e.runID, name, "--multi-part", "--gzip", "--input", e.inputFilename)
+		run(t, "download", e.taskID, e.runID, name, "--output", e.outputFilename)
 		e.validate()
-		run("download", e.taskID, name, "--latest", "--output", e.outputFilename)
+		run(t, "download", e.taskID, name, "--latest", "--output", e.outputFilename)
+		e.validate()
+	})
+
+	t.Run("downloading a url", func(t *testing.T) {
+		name := "public/downloading-url"
+		url, err := e.queue.GetArtifact_SignedURL(e.taskID, e.runID, name, time.Duration(3)*time.Hour)
+		if err != nil {
+			t.Fatal(err)
+		}
+		run(t, "upload", e.taskID, e.runID, name, "--input", e.inputFilename)
+		run(t, "download", "--url", url.String(), "--output", e.outputFilename)
 		e.validate()
 	})
 
 	t.Run("download to stdout", func(t *testing.T) {
-		e, teardown := setup(t)
-		defer teardown()
 		name := "public/small"
 		filename := "./testdata/small"
 		of, err := os.Create(filename)
@@ -335,8 +377,8 @@ func TestCLIRuns(t *testing.T) {
 		of.Close()
 		defer os.Remove(filename)
 
-		run("upload", e.taskID, e.runID, name, "--gzip", "--input", filename)
-		run("download", e.taskID, e.runID, name, "--output", "-")
-		run("download", e.taskID, name, "--latest", "--output", "-")
+		run(t, "upload", e.taskID, e.runID, name, "--gzip", "--input", filename)
+		run(t, "download", e.taskID, e.runID, name, "--output", "-")
+		run(t, "download", e.taskID, name, "--latest", "--output", "-")
 	})
 }

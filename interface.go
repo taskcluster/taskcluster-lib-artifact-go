@@ -262,15 +262,19 @@ type stater interface {
 	Stat() (os.FileInfo, error)
 }
 
-// TODO split this function into a redirect and download section so that we can
-// have a download-raw function in the interface and matching command in the
-// CLI which lets us do all the verification logic on arbitrary urls
-
 // TODO Support downloading non-blob artifacts
 
 // Because we generate different URLs based on whether we're asking for latest
 // or not
-func (c *Client) download(u string, outputWriter io.Writer) error {
+// DownloadURL will take a string that is a Queue URL to an artifact and
+// download it to the outputWriter.  If an error occurs during the download,
+// the response body of the error message will be written instead of the
+// artifact's content.  This is so that we can stream the response to the
+// output instead of buffering it in memory.  It is the callers responsibility
+// to delete the contents of the output on failure if needed.  If the output
+// also implements the io.Seeker interface, a check that the output is already
+// empty will occur.
+func (c *Client) DownloadURL(u string, outputWriter io.Writer) error {
 
 	// If we can stat the output, let's see that the size is 0 bytes.  This is an
 	// extra safety check, so we're only going to fail if *can* stat the output
@@ -367,7 +371,7 @@ func (c *Client) Download(taskID, runID, name string, output io.Writer) error {
 		return newErrorf(err, "creating signed URL for %s/%s/%s", taskID, runID, name)
 	}
 
-	return c.download(url.String(), output)
+	return c.DownloadURL(url.String(), output)
 
 }
 
@@ -392,5 +396,5 @@ func (c *Client) DownloadLatest(taskID, name string, output io.Writer) error {
 		return err
 	}
 
-	return c.download(url.String(), output)
+	return c.DownloadURL(url.String(), output)
 }

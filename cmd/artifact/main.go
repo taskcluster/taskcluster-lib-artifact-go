@@ -65,7 +65,8 @@ func _main(args []string) error {
 	}
 
 	app.OnUsageError = func(context *cli.Context, err error, isSubcommand bool) error {
-		return cli.NewExitError(err, ErrBadUsage)
+		fmt.Printf("Usage Error: %s\n", err)
+		return cli.NewExitError(err.Error(), ErrBadUsage)
 	}
 
 	app.Flags = []cli.Flag{
@@ -127,6 +128,10 @@ func _main(args []string) error {
 					Name:  "latest",
 					Usage: "request artifact from latest run",
 				},
+				cli.BoolFlag{
+					Name:  "url",
+					Usage: "use a raw Queue URL instead of specifying taskid, runid or name",
+				},
 			},
 			ArgsUsage: "taskId runId name",
 			Action: func(c *cli.Context) error {
@@ -137,7 +142,7 @@ func _main(args []string) error {
 					Certificate: c.GlobalString("certificate"),
 				})
 				if err != nil {
-					return cli.NewExitError(err, ErrBadUsage)
+					return cli.NewExitError(err.Error(), ErrBadUsage)
 				}
 
 				if c.GlobalIsSet("base-url") {
@@ -159,7 +164,7 @@ func _main(args []string) error {
 					_, ps := client.GetInternalSizes()
 					err := client.SetInternalSizes(cz*1024, ps)
 					if err != nil {
-						return cli.NewExitError(err, ErrBadUsage)
+						return cli.NewExitError(err.Error(), ErrBadUsage)
 					}
 				}
 
@@ -172,7 +177,7 @@ func _main(args []string) error {
 				if c.String("output") != "-" {
 					output, err = os.Create(c.String("output"))
 					if err != nil {
-						return cli.NewExitError(err, ErrInternal)
+						return cli.NewExitError(err.Error(), ErrInternal)
 					}
 					defer output.Close()
 				} else {
@@ -180,11 +185,20 @@ func _main(args []string) error {
 				}
 
 				if c.Bool("latest") {
+					if c.Bool("url") {
+						return cli.NewExitError("--latest and --url are mutually exclusive", ErrBadUsage)
+					}
 					if c.NArg() != 2 {
 						msg := fmt.Sprintf("--latest requires two arguments, received %v", c.Args())
 						return cli.NewExitError(msg, ErrBadUsage)
 					}
 					err = client.DownloadLatest(c.Args().Get(0), c.Args().Get(1), output)
+				} else if c.Bool("url") {
+					if c.NArg() != 1 {
+						msg := fmt.Sprintf("--url requires one argument, received %v", c.Args())
+						return cli.NewExitError(msg, ErrBadUsage)
+					}
+					err = client.DownloadURL(c.Args().Get(0), output)
 				} else {
 					if c.NArg() != 3 {
 						msg := fmt.Sprintf("three arguments, received %v", c.Args())
@@ -198,11 +212,11 @@ func _main(args []string) error {
 				case nil:
 					return nil
 				case artifact.ErrBadOutputWriter:
-					return cli.NewExitError(err, ErrBadUsage)
+					return cli.NewExitError(err.Error(), ErrBadUsage)
 				case artifact.ErrCorrupt:
-					return cli.NewExitError(err, ErrCorrupt)
+					return cli.NewExitError(err.Error(), ErrCorrupt)
 				default:
-					return cli.NewExitError(err, ErrInternal)
+					return cli.NewExitError(err.Error(), ErrInternal)
 				}
 			},
 			Category: "Downloading",
@@ -250,7 +264,7 @@ func _main(args []string) error {
 					Certificate: c.GlobalString("certificate"),
 				})
 				if err != nil {
-					return cli.NewExitError(err, ErrBadUsage)
+					return cli.NewExitError(err.Error(), ErrBadUsage)
 				}
 
 				client := artifact.New(q)
@@ -280,7 +294,7 @@ func _main(args []string) error {
 							return cli.NewExitError("input does not exist", ErrBadUsage)
 						}
 						if err != nil {
-							return cli.NewExitError(err, ErrInternal)
+							return cli.NewExitError(err.Error(), ErrInternal)
 						}
 						mpsize := c.Int64("multipart-size")
 						if fi.Size() >= mpsize*1024*1024 {
@@ -294,7 +308,7 @@ func _main(args []string) error {
 					_, ps := client.GetInternalSizes()
 					err := client.SetInternalSizes(cz*1024, ps)
 					if err != nil {
-						return cli.NewExitError(err, ErrBadUsage)
+						return cli.NewExitError(err.Error(), ErrBadUsage)
 					}
 				}
 
@@ -303,7 +317,7 @@ func _main(args []string) error {
 					cz, _ := client.GetInternalSizes()
 					err := client.SetInternalSizes(cz, ps*1024*1024)
 					if err != nil {
-						return cli.NewExitError(err, ErrBadUsage)
+						return cli.NewExitError(err.Error(), ErrBadUsage)
 					}
 				}
 
@@ -313,13 +327,13 @@ func _main(args []string) error {
 
 				input, err := os.Open(c.String("input"))
 				if err != nil {
-					return cli.NewExitError(err, ErrBadUsage)
+					return cli.NewExitError(err.Error(), ErrBadUsage)
 				}
 				defer input.Close()
 
 				output, err := ioutil.TempFile(c.String("tmp-dir"), "tc-artifact")
 				if err != nil {
-					return cli.NewExitError(err, ErrInternal)
+					return cli.NewExitError(err.Error(), ErrInternal)
 				}
 				defer func() {
 					output.Close()
@@ -336,20 +350,16 @@ func _main(args []string) error {
 				case nil:
 					return nil
 				case artifact.ErrBadOutputWriter:
-					return cli.NewExitError(err, ErrBadUsage)
+					return cli.NewExitError(err.Error(), ErrBadUsage)
 				case artifact.ErrCorrupt:
-					return cli.NewExitError(err, ErrCorrupt)
+					return cli.NewExitError(err.Error(), ErrCorrupt)
 				default:
-					return cli.NewExitError(err, ErrInternal)
+					return cli.NewExitError(err.Error(), ErrInternal)
 				}
 			},
 			Category: "Uploading",
 		},
 	}
 
-	err := app.Run(args)
-	if _, ok := err.(cli.ExitCoder); !ok {
-		return cli.NewExitError(err, ErrBadUsage)
-	}
-	return err
+	return app.Run(args)
 }
