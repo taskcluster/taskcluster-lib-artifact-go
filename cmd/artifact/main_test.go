@@ -323,7 +323,7 @@ func TestCLIRuns(t *testing.T) {
 
 	t.Run("multipart-identity", func(t *testing.T) {
 		name := "public/mp-identity"
-		run(t, "upload", e.taskID, e.runID, name, "--multi-part", "--input", e.inputFilename)
+		run(t, "upload", e.taskID, e.runID, name, "--multipart", "--input", e.inputFilename)
 		run(t, "download", e.taskID, e.runID, name, "--output", e.outputFilename)
 		e.validate()
 		run(t, "download", e.taskID, name, "--latest", "--output", e.outputFilename)
@@ -332,7 +332,7 @@ func TestCLIRuns(t *testing.T) {
 
 	t.Run("multipart-gzip", func(t *testing.T) {
 		name := "public/mp-gzip"
-		run(t, "upload", e.taskID, e.runID, name, "--multi-part", "--gzip", "--input", e.inputFilename)
+		run(t, "upload", e.taskID, e.runID, name, "--multipart", "--gzip", "--input", e.inputFilename)
 		run(t, "download", e.taskID, e.runID, name, "--output", e.outputFilename)
 		e.validate()
 		run(t, "download", e.taskID, name, "--latest", "--output", e.outputFilename)

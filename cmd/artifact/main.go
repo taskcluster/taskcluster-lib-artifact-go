@@ -244,7 +244,7 @@ func _main(args []string) error {
 				},
 				cli.StringFlag{
 					Name:  "multipart-part-size",
-					Usage: "number of bytes before starting to use multi-part uploads",
+					Usage: "number of bytes before starting to use multipart uploads",
 					Value: "250 MB",
 				},
 			},
@@ -290,7 +290,7 @@ func _main(args []string) error {
 						if err != nil {
 							return cli.NewExitError(err.Error(), ErrInternal)
 						}
-						mpsize, err := units.ParseBase2Bytes(c.String("multi-part-size"))
+						mpsize, err := units.ParseBase2Bytes(c.String("multipart-size"))
 						if err != nil {
 							return err
 						}
