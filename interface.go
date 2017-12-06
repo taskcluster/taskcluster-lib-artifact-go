@@ -272,26 +272,29 @@ type stater interface {
 // or not
 func (c *Client) download(u string, outputWriter io.Writer) error {
 
-	// If we can stat the output, let's do that and ensure it's 0 bytes,
-	// but we sholdn't fail if we're unable to actually stat the file.
+	// If we can stat the output, let's see that the size is 0 bytes.  This is an
+	// extra safety check, so we're only going to fail if *can* stat the output
+	// and that response indicates an invalid value.
 	if s, ok := outputWriter.(stater); ok {
 		fi, err := s.Stat()
-		if err == nil {
-			if fi.Size() != 0 {
-				return ErrBadOutputWriter
-			}
+		// We don't care about errors calling Stat().  We'll just ignore the call
+		// and continue.  This is an extra check, not a mandatory one
+		if err == nil && fi.Size() != 0 {
+			return ErrBadOutputWriter
 		}
 	}
 
-	// If we can seek the output, let's seek 0 bytes from the end and determine
-	// the new offset which is the file's size, but we shouldn't fail if we can't
-	// seek the file
+	// If we can seek the output, let's do that and ensure it's 0 bytes. If we
+	// encounter an error doing the Seek, we ignore this check.  We only fail if
+	// the .Seek() method succeeded but the response was invalid.  This is to be
+	// able to handle things like os.Stdout, which implement this interface but
+	// which will always return an error when called.  If we can seek the output,
+	// let's seek 0 bytes from the end and determine the new offset which is the
+	// file's size
 	if s, ok := outputWriter.(io.Seeker); ok {
 		size, err := s.Seek(0, io.SeekEnd)
-		if err == nil {
-			if size != 0 {
-				return ErrBadOutputWriter
-			}
+		if err == nil && size != 0 {
+			return ErrBadOutputWriter
 		}
 	}
 

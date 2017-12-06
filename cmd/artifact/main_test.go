@@ -322,4 +322,21 @@ func TestCLIRuns(t *testing.T) {
 		e.validate()
 	})
 
+	t.Run("download to stdout", func(t *testing.T) {
+		e, teardown := setup(t)
+		defer teardown()
+		name := "public/small"
+		filename := "./testdata/small"
+		of, err := os.Create(filename)
+		if err != nil {
+			t.Fatal(err)
+		}
+		of.WriteString("Hello, STDOUT")
+		of.Close()
+		defer os.Remove(filename)
+
+		run("upload", e.taskID, e.runID, name, "--gzip", "--input", filename)
+		run("download", e.taskID, e.runID, name, "--output", "-")
+		run("download", e.taskID, name, "--latest", "--output", "-")
+	})
 }

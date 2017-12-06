@@ -120,7 +120,7 @@ func _main(args []string) error {
 			Flags: []cli.Flag{
 				cli.StringFlag{
 					Name:   "output, o",
-					Usage:  "`FILENAME` to write output to.  Value '-' writes to stdout",
+					Usage:  "`FILENAME` to write output to",
 					EnvVar: "ARTIFACT_OUTPUT",
 				},
 				cli.BoolFlag{
@@ -169,8 +169,8 @@ func _main(args []string) error {
 
 				var output *os.File
 
-				if c.String("output") == "-" {
-					output, err := os.Create(c.String("output"))
+				if c.String("output") != "-" {
+					output, err = os.Create(c.String("output"))
 					if err != nil {
 						return cli.NewExitError(err, ErrInternal)
 					}
@@ -181,12 +181,14 @@ func _main(args []string) error {
 
 				if c.Bool("latest") {
 					if c.NArg() != 2 {
-						return cli.NewExitError("--latest requires two arguments", ErrBadUsage)
+						msg := fmt.Sprintf("--latest requires two arguments, received %v", c.Args())
+						return cli.NewExitError(msg, ErrBadUsage)
 					}
 					err = client.DownloadLatest(c.Args().Get(0), c.Args().Get(1), output)
 				} else {
 					if c.NArg() != 3 {
-						return cli.NewExitError("three arguments required", 1)
+						msg := fmt.Sprintf("three arguments, received %v", c.Args())
+						return cli.NewExitError(msg, ErrBadUsage)
 					}
 					err = client.Download(c.Args().Get(0), c.Args().Get(1), c.Args().Get(2), output)
 
@@ -319,11 +321,14 @@ func _main(args []string) error {
 				if err != nil {
 					return cli.NewExitError(err, ErrInternal)
 				}
-				defer output.Close()
-				defer os.Remove(output.Name())
+				defer func() {
+					output.Close()
+					os.Remove(output.Name())
+				}()
 
 				if c.NArg() != 3 {
-					return cli.NewExitError("three arguments required", 1)
+					msg := fmt.Sprintf("three arguments, received %v", c.Args())
+					return cli.NewExitError(msg, ErrBadUsage)
 				}
 				err = client.Upload(c.Args().Get(0), c.Args().Get(1), c.Args().Get(2), input, output, gzip, mp)
 
