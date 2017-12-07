@@ -23,7 +23,7 @@ func newError(super error, msg string) error {
 
 func newErrorf(super error, format string, msg ...interface{}) error {
 	err := artifactError{
-		super: error(super),
+		super: super,
 		msg:   fmt.Sprintf(format, msg...),
 	}
 	return error(err)
