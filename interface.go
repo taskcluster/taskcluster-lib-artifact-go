@@ -96,7 +96,8 @@ func (c *Client) GetInternalSizes() (int, int) {
 // io.ReadWriteSeeker which has 0 bytes (thus position 0).  We need the output
 // to be able to Read, Write and Seek because we'll pass over the file one time
 // to copy it to the output, then seek back to the beginning and read it in
-// again for the upload
+// again for the upload.  When this artifact is downloaded with this library,
+// the resulting output will be written as a once encoded gzip file
 func (c *Client) Upload(taskID, runID, name string, input io.ReadSeeker, output io.ReadWriteSeeker, gzip, multipart bool) error {
 
 	// Let's check if the output has data already.  The idea here is that if we
@@ -264,22 +265,22 @@ type stater interface {
 
 // TODO Support downloading non-blob artifacts
 
-// Because we generate different URLs based on whether we're asking for latest
-// or not
-// DownloadURL will take a string that is a Queue URL to an artifact and
-// download it to the outputWriter.  If an error occurs during the download,
-// the response body of the error message will be written instead of the
-// artifact's content.  This is so that we can stream the response to the
-// output instead of buffering it in memory.  It is the callers responsibility
-// to delete the contents of the output on failure if needed.  If the output
-// also implements the io.Seeker interface, a check that the output is already
-// empty will occur.
-func (c *Client) DownloadURL(u string, outputWriter io.Writer) error {
+// DownloadURL downloads a URL to the specified output.  Because we generate
+// different URLs based on whether we're asking for latest or not DownloadURL
+// will take a string that is a Queue URL to an artifact and download it to the
+// outputWriter.  If an error occurs during the download, the response body of
+// the error message will be written instead of the artifact's content.  This
+// is so that we can stream the response to the output instead of buffering it
+// in memory.  It is the callers responsibility to delete the contents of the
+// output on failure if needed.  If the output also implements the io.Seeker
+// interface, a check that the output is already empty will occur.  The most
+// common output option is likely an ioutil.TempFile() instance.
+func (c *Client) DownloadURL(u string, output io.Writer) error {
 
 	// If we can stat the output, let's see that the size is 0 bytes.  This is an
 	// extra safety check, so we're only going to fail if *can* stat the output
 	// and that response indicates an invalid value.
-	if s, ok := outputWriter.(stater); ok {
+	if s, ok := output.(stater); ok {
 		fi, err := s.Stat()
 		// We don't care about errors calling Stat().  We'll just ignore the call
 		// and continue.  This is an extra check, not a mandatory one
@@ -295,7 +296,7 @@ func (c *Client) DownloadURL(u string, outputWriter io.Writer) error {
 	// which will always return an error when called.  If we can seek the output,
 	// let's seek 0 bytes from the end and determine the new offset which is the
 	// file's size
-	if s, ok := outputWriter.(io.Seeker); ok {
+	if s, ok := output.(io.Seeker); ok {
 		size, err := s.Seek(0, io.SeekEnd)
 		if err == nil && size != 0 {
 			return ErrBadOutputWriter
@@ -339,7 +340,7 @@ func (c *Client) DownloadURL(u string, outputWriter io.Writer) error {
 	// Now we're going to request the artifact for real.  We're going to write directly
 	// to the outputWriter.  This does mean, unfortunately, that the outputWriter will
 	// contain the
-	cs, _, err = c.agent.run(request, nil, c.chunkSize, outputWriter, true)
+	cs, _, err = c.agent.run(request, nil, c.chunkSize, output, true)
 	if err != nil {
 		return err
 	}
@@ -357,7 +358,8 @@ func (c *Client) DownloadURL(u string, outputWriter io.Writer) error {
 // stream the response to the output instead of buffering it in memory.  It is
 // the callers responsibility to delete the contents of the output on failure
 // if needed.  If the output also implements the io.Seeker interface, a check
-// that the output is already empty will occur
+// that the output is already empty will occur.  The most common output option
+// is likely an ioutil.TempFile() instance.
 func (c *Client) Download(taskID, runID, name string, output io.Writer) error {
 	// We need to build the URL because we're going to need to get the redirect's
 	// headers.  That's not possible with the q.GetArtifact() method.  Ideally,
@@ -381,7 +383,8 @@ func (c *Client) Download(taskID, runID, name string, output io.Writer) error {
 // that we can stream the response to the output instead of buffering it in
 // memory.  It is the callers responsibility to delete the contents of the
 // output on failure if needed.  If the output also implements the io.Seeker
-// interface, a check that the output is already empty will occur
+// interface, a check that the output is already empty will occur.  The most
+// common output option is likely an ioutil.TempFile() instance.
 func (c *Client) DownloadLatest(taskID, name string, output io.Writer) error {
 	// We need to build the URL because we're going to need to get the redirect's
 	// headers.  That's not possible with the q.GetArtifact() method.  Ideally,
@@ -393,7 +396,6 @@ func (c *Client) DownloadLatest(taskID, name string, output io.Writer) error {
 	url, err := c.queue.GetLatestArtifact_SignedURL(taskID, name, time.Duration(1)*time.Hour)
 	if err != nil {
 		return newErrorf(err, "creating signed URL for %s/latest/%s", taskID, name)
-		return err
 	}
 
 	return c.DownloadURL(url.String(), output)

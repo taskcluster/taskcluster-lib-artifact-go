@@ -1,6 +1,7 @@
 package artifact
 
 import (
+	"errors"
 	"io"
 	"log"
 	"os"
@@ -35,4 +36,13 @@ func SetLogPrefix(p string) {
 // method.  See: https://golang.org/pkg/log/#Logger.SetFlags
 func SetLogFlags(f int) {
 	logger.SetFlags(f)
+}
+
+// SetLogger replaces the current logger with the logger specified
+func SetLogger(l *log.Logger) error {
+	if l == nil {
+		return errors.New("new logger must be non-nil")
+	}
+	logger = l
+	return nil
 }

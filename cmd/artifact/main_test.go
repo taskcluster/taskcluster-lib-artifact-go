@@ -283,59 +283,27 @@ func TestCLIRuns(t *testing.T) {
 	e, teardown := setup(t)
 	defer teardown()
 
-	t.Run("auto-identity", func(t *testing.T) {
-		name := "public/auto-identity"
-		run(t, "upload", e.taskID, e.runID, name, "--input", e.inputFilename)
-		run(t, "download", e.taskID, e.runID, name, "--output", e.outputFilename)
-		e.validate()
-		run(t, "download", e.taskID, name, "--latest", "--output", e.outputFilename)
-		e.validate()
-	})
+	// validateUploadOptions tests the downloaded file of an upload with the
+	// given options is unaltered from the original file
+	validateUploadOptions := func(name string, uploadOptions ...string) {
+		t.Run(name, func(t *testing.T) {
+			name := "public/" + name
+			upargs := []string{"upload", e.taskID, e.runID, name, "--input", e.inputFilename}
+			upargs = append(upargs, uploadOptions...)
+			run(t, upargs...)
+			run(t, "download", e.taskID, e.runID, name, "--output", e.outputFilename)
+			e.validate()
+			run(t, "download", e.taskID, name, "--latest", "--output", e.outputFilename)
+			e.validate()
+		})
+	}
 
-	t.Run("auto-gzip", func(t *testing.T) {
-		name := "public/auto-gzip"
-		run(t, "upload", e.taskID, e.runID, name, "--gzip", "--input", e.inputFilename)
-		run(t, "download", e.taskID, e.runID, name, "--output", e.outputFilename)
-		e.validate()
-		run(t, "download", e.taskID, name, "--latest", "--output", e.outputFilename)
-		e.validate()
-	})
-
-	t.Run("single-part-identity", func(t *testing.T) {
-		name := "public/sp-identity"
-		run(t, "upload", e.taskID, e.runID, name, "--single-part", "--input", e.inputFilename)
-		run(t, "download", e.taskID, e.runID, name, "--output", e.outputFilename)
-		e.validate()
-		run(t, "download", e.taskID, name, "--latest", "--output", e.outputFilename)
-		e.validate()
-	})
-
-	t.Run("single-part-gzip", func(t *testing.T) {
-		name := "public/sp-gzip"
-		run(t, "upload", e.taskID, e.runID, name, "--single-part", "--gzip", "--input", e.inputFilename)
-		run(t, "download", e.taskID, e.runID, name, "--output", e.outputFilename)
-		e.validate()
-		run(t, "download", e.taskID, name, "--latest", "--output", e.outputFilename)
-		e.validate()
-	})
-
-	t.Run("multipart-identity", func(t *testing.T) {
-		name := "public/mp-identity"
-		run(t, "upload", e.taskID, e.runID, name, "--multipart", "--input", e.inputFilename)
-		run(t, "download", e.taskID, e.runID, name, "--output", e.outputFilename)
-		e.validate()
-		run(t, "download", e.taskID, name, "--latest", "--output", e.outputFilename)
-		e.validate()
-	})
-
-	t.Run("multipart-gzip", func(t *testing.T) {
-		name := "public/mp-gzip"
-		run(t, "upload", e.taskID, e.runID, name, "--multipart", "--gzip", "--input", e.inputFilename)
-		run(t, "download", e.taskID, e.runID, name, "--output", e.outputFilename)
-		e.validate()
-		run(t, "download", e.taskID, name, "--latest", "--output", e.outputFilename)
-		e.validate()
-	})
+	validateUploadOptions("auto-identity") // no upload options
+	validateUploadOptions("auto-gzip", "--gzip")
+	validateUploadOptions("single-part-identity", "--single-part")
+	validateUploadOptions("single-part-gzip", "--single-part", "--gzip")
+	validateUploadOptions("multipart-identity", "--multipart")
+	validateUploadOptions("multipart-gzip", "--multipart", "--gzip")
 
 	t.Run("downloading a url", func(t *testing.T) {
 		name := "public/downloading-url"
@@ -355,12 +323,18 @@ func TestCLIRuns(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		of.WriteString("Hello, STDOUT")
+		of.WriteString("Testing writing downloads to STDOUT.  Beep Boop.\n")
 		of.Close()
 		defer os.Remove(filename)
 
 		run(t, "upload", e.taskID, e.runID, name, "--gzip", "--input", filename)
+		// Unfortunately this will actually write to standard output.  I don't want
+		// to intercept writing to the real standard output, because os.Stdout
+		// behaves in a very specific way.  Basically, I just want to make sure no
+		// errors are thrown.  Patches welcome!  The specific case that I'm
+		// concerned with is that os.Stdout is an io.Seeker, but all calls to
+		// Seek() on it immediately fail.  There's probably other things, but this
+		// is the minimum that's different
 		run(t, "download", e.taskID, e.runID, name, "--output", "-")
-		run(t, "download", e.taskID, name, "--latest", "--output", "-")
 	})
 }

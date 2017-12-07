@@ -2,26 +2,27 @@
 // Queue's blob artifacts.  Blob artifacts are the way that Taskcluster stores
 // and distributes the results of a task and replace the old "S3" type of
 // artifact for storing artifacts in S3.  These artifacts have stronger
-// authenticity and integrity guaruntees than the old type.
+// authenticity and integrity guaruntees than the former type.
 //
 // Overview of Blob Artifacts
 //
 // Blob artifacts can be between 1 byte and 5GB if uploaded as a single part
 // upload and between 1 byte and 5TB if uploaded as a multipart upload.  To
-// upload this type of artifact, the uploader must compute the artifacts sha256
-// and size before and after optional gzip compression.  The sha256 and size
-// values are used by the Queue to generate a set of requests which get sent
-// back to the uploader which can be used to upload the artifact.  This ensures
-// that network interuptions or corruption result in errors when uploading.
-// Once the uploads have completed, the uploader must tell the Queue that the
-// upload is complete.
+// upload this type of artifact, the uploader must compute the artifact's
+// sha256 and size before and after optional gzip compression.  The sha256 and
+// size values are used by the Queue to generate a set of requests which get
+// sent back to the uploader which can be used to upload the artifact.  This
+// ensures that network interuptions or corruption result in errors when
+// uploading.  Once the uploads have completed, the uploader must tell the
+// Queue that the upload is complete.
 //
 // The queue ensures that the sha256 and size values are set as headers on the
-// artifacts in S3 so that downloaders can do verification
+// artifacts in S3 so that downloaded content can be verified.
 //
-// When downloading a blob artifact, the downloader must verify that the
-// artifact downloaded has the same sha256 and sizes before and after optional
-// gzip decompression.
+// While downloading, the downloader should be counting the number of bytes as
+// well as hashing the incoming artifact to determine the sha256 and size to compare
+// to the expected values on completion of the request.  It is imperative that
+// the downloader perform these verifications
 //
 // Interacting with this API correctly is sufficiently complicated that this
 // library is the only supported way to upload or download artifacts using Go.
@@ -50,7 +51,5 @@
 // content encoding of 'gzip'.  In both uploading and downloading, the gzip
 // encoding and decoding is done independently of any gzip encoding by the
 // calling code.  This could result in double gzip encoding if a gzip file is
-// passed into Upload() with the gzip argument set to true.  When this artifact
-// is downloaded with this library, the resulting output will be written as a
-// once encoded gzip file
+// passed into Upload() with the gzip argument set to true.
 package artifact

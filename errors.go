@@ -22,4 +22,5 @@ var ErrBadRedirect = newError(nil, "malformed redirect")
 // was able to be checked for its size and it contained more than 0 bytes
 var ErrBadOutputWriter = newError(nil, "output writer is not empty")
 
+// ErrBadSize is returned when a part size or chunk size is invalid
 var ErrBadSize = newError(nil, "invalid part or chunk size")
