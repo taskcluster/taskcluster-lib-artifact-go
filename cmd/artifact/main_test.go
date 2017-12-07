@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
@@ -255,7 +254,6 @@ func TestCorruptedDownloads(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	fmt.Printf("%s\n", ts.URL)
 	args := []string{
 		"artifact",
 		"-q",

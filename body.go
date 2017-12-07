@@ -5,11 +5,22 @@ import (
 	"io"
 )
 
+// A body is an abstraction we have for reading specific sections of a file
+// with an offset.  This is done instead of using a SectionReader because
+// there's some extra checks we want as well as being able to use things which
+// aren't io.ReaderAts
 type body struct {
+	// The backing reader is the underlying io.ReadSeeker.  In the context of a
+	// body which is linked to a file on the filesystem, this would be the
+	// reference to an os.File which is what the reads will ultimately be
+	// directed to.  This io.ReadSeeker will have .Seek() operations called on it
+	// and it must be exclusively used by the body type.
 	backingReader io.ReadSeeker
-	limitReader   io.Reader
-	offset        int64
-	size          int64
+	// The limit reader is an io.LimitReader which ensures we only read up to
+	// `size` bytes when reading from the backingReader
+	limitReader io.Reader
+	offset      int64
+	size        int64
 }
 
 // Create a body.  A body is an io.Reader instance which reads from the file at

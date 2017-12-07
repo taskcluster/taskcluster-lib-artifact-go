@@ -2,6 +2,7 @@ package artifact
 
 import (
 	"bytes"
+	"crypto/rand"
 	"io"
 	"io/ioutil"
 	"os"
@@ -13,18 +14,34 @@ var allTheBytes = []byte{1, 3, 7, 15, 31, 63, 127, 255}
 func setup(t *testing.T) (*os.File, []byte, func()) {
 
 	var b bytes.Buffer
+	var err error
 
-	file, err := ioutil.TempFile(".", "body-test")
+	file, err := ioutil.TempFile("testdata", "body-test")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	out := io.MultiWriter(file, &b)
 
+	// We declare this outside of the loop to minimize allocations
+	randbuf := make([]byte, 8)
+
 	for i := 0; i < 256; i++ {
-		_, err := out.Write(allTheBytes)
-		if err != nil {
-			t.Fatal(err)
+		// Using repeated bytes is nice for debugging purposes
+		if _, ok := os.LookupEnv("USE_REPEATED_BYTES"); ok {
+			_, err := out.Write(allTheBytes)
+			if err != nil {
+				t.Fatal(err)
+			}
+		} else {
+			_, err = rand.Read(randbuf)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = out.Write(randbuf)
+			if err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
 
