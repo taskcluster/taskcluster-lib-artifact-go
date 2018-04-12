@@ -7,7 +7,7 @@ import (
 
 	"github.com/alecthomas/units"
 	tcclient "github.com/taskcluster/taskcluster-client-go"
-	"github.com/taskcluster/taskcluster-client-go/queue"
+	"github.com/taskcluster/taskcluster-client-go/tcqueue"
 	artifact "github.com/taskcluster/taskcluster-lib-artifact-go"
 	"github.com/urfave/cli"
 )
@@ -83,7 +83,7 @@ func _main(args []string) error {
 			Name:   "base-url",
 			EnvVar: "QUEUE_BASE_URL",
 			Usage:  "set queue's `BASE_URL`",
-			Value:  queue.DefaultBaseURL,
+			Value:  tcqueue.DefaultBaseURL,
 		},
 		cli.StringFlag{
 			Name:   "chunk-size",
@@ -135,14 +135,11 @@ func _main(args []string) error {
 					return cli.NewExitError("Cannot specify --latest and --url", ErrInternal)
 				}
 
-				q, err := queue.New(&tcclient.Credentials{
+				q := tcqueue.New(&tcclient.Credentials{
 					ClientID:    c.GlobalString("client-id"),
 					AccessToken: c.GlobalString("access-token"),
 					Certificate: c.GlobalString("certificate"),
 				})
-				if err != nil {
-					return cli.NewExitError(err.Error(), ErrInternal)
-				}
 
 				if c.GlobalIsSet("base-url") {
 					q.BaseURL = c.GlobalString("base-url")
@@ -252,14 +249,11 @@ func _main(args []string) error {
 			Action: func(c *cli.Context) error {
 				var err error
 
-				q, err := queue.New(&tcclient.Credentials{
+				q := tcqueue.New(&tcclient.Credentials{
 					ClientID:    c.GlobalString("client-id"),
 					AccessToken: c.GlobalString("access-token"),
 					Certificate: c.GlobalString("certificate"),
 				})
-				if err != nil {
-					return cli.NewExitError(err.Error(), ErrInternal)
-				}
 
 				client := artifact.New(q)
 
