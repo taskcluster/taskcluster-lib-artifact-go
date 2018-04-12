@@ -11,7 +11,7 @@ import (
 	"time"
 
 	tcclient "github.com/taskcluster/taskcluster-client-go"
-	queue "github.com/taskcluster/taskcluster-client-go/queue"
+	"github.com/taskcluster/taskcluster-client-go/tcqueue"
 )
 
 // TODO implement an in memory 'file'
@@ -26,7 +26,7 @@ type apiRequest struct {
 	Headers map[string]string `json:"headers"`
 }
 
-// blobArtifactResponse is the response from queue.CreateArtifact
+// blobArtifactResponse is the response from tcqueue.CreateArtifact
 type blobArtifactResponse struct {
 	StorageType string        `json:"storageType"`
 	Requests    []apiRequest  `json:"requests"`
@@ -36,7 +36,7 @@ type blobArtifactResponse struct {
 // Client knows how to upload and download blob artifacts
 type Client struct {
 	agent                   client
-	queue                   *queue.Queue
+	queue                   *tcqueue.Queue
 	chunkSize               int
 	multipartPartChunkCount int
 	AllowInsecure           bool
@@ -49,7 +49,7 @@ const DefaultChunkSize int = 128 * 1024
 const DefaultPartSize int = 100 * 1024 * 1024 / DefaultChunkSize
 
 // New creates a Client for use
-func New(queue *queue.Queue) *Client {
+func New(queue *tcqueue.Queue) *Client {
 	a := newAgent()
 	return &Client{
 		agent:                   a,
@@ -144,7 +144,7 @@ func (c *Client) Upload(taskID, runID, name string, input io.ReadSeeker, output 
 		}
 	}
 
-	bareq := &queue.BlobArtifactRequest{
+	bareq := &tcqueue.BlobArtifactRequest{
 		ContentEncoding: u.ContentEncoding,
 		ContentLength:   u.Size,
 		ContentSha256:   hex.EncodeToString(u.Sha256),
@@ -173,7 +173,7 @@ func (c *Client) Upload(taskID, runID, name string, input io.ReadSeeker, output 
 		return newErrorf(err, "serializing json request body for createArtifact queue call during upload of %s to %s/%s/%s", findName(input), taskID, runID, name)
 	}
 
-	pareq := queue.PostArtifactRequest(json.RawMessage(cap))
+	pareq := tcqueue.PostArtifactRequest(json.RawMessage(cap))
 
 	resp, err := c.queue.CreateArtifact(taskID, runID, name, &pareq)
 	if err != nil {
@@ -245,7 +245,7 @@ func (c *Client) Upload(taskID, runID, name string, input io.ReadSeeker, output 
 		etags[i] = cs.ResponseHeader.Get("etag")
 	}
 
-	careq := queue.CompleteArtifactRequest{
+	careq := tcqueue.CompleteArtifactRequest{
 		Etags: etags,
 	}
 
