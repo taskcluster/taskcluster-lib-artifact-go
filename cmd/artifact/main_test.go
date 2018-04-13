@@ -15,7 +15,7 @@ import (
 
 	"github.com/taskcluster/slugid-go/slugid"
 	tcclient "github.com/taskcluster/taskcluster-client-go"
-	"github.com/taskcluster/taskcluster-client-go/queue"
+	"github.com/taskcluster/taskcluster-client-go/tcqueue"
 	"github.com/urfave/cli"
 )
 
@@ -34,7 +34,7 @@ type testEnv struct {
 	runID          string
 	inputFilename  string
 	outputFilename string
-	queue          *queue.Queue
+	queue          *tcqueue.Queue
 	t              *testing.T
 }
 
@@ -48,7 +48,7 @@ func (e testEnv) validate() {
 		e.t.Fatal(err)
 	}
 	if !bytes.Equal(f1, f2) {
-		e.t.Error("File %s and %s unexpectedly differ", e.inputFilename, e.outputFilename)
+		e.t.Errorf("File %s and %s unexpectedly differ", e.inputFilename, e.outputFilename)
 	}
 }
 
@@ -106,7 +106,7 @@ func setup(t *testing.T) (testEnv, func()) {
 	// expiry in one day, in case we need test results
 	expires := created.AddDate(0, 0, 2)
 
-	taskDef := &queue.TaskDefinitionRequest{
+	taskDef := &tcqueue.TaskDefinitionRequest{
 		Created:      tcclient.Time(created),
 		Deadline:     tcclient.Time(deadline),
 		Expires:      tcclient.Time(expires),
@@ -130,35 +130,31 @@ func setup(t *testing.T) (testEnv, func()) {
 		Routes:        []string{},
 		SchedulerID:   "test-scheduler",
 		Scopes:        []string{},
-		Tags:          json.RawMessage(`{"CI":"taskcluster-lib-artifact-go/cli"}`),
+		Tags:          map[string]string{"CI": "taskcluster-lib-artifact-go/cli"},
 		Priority:      "lowest",
 		TaskGroupID:   taskGroupID,
 		WorkerType:    "my-workertype",
 	}
 
-	q, err := queue.New(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	q := tcqueue.NewFromEnv()
 
 	_, err = q.CreateTask(taskID, taskDef)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	tcr := queue.TaskClaimRequest{WorkerGroup: "my-worker-group", WorkerID: "my-worker"}
+	tcr := tcqueue.TaskClaimRequest{WorkerGroup: "my-worker-group", WorkerID: "my-worker"}
 	tcres, err := q.ClaimTask(taskID, "0", &tcr)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	tEnv.runID = strconv.FormatInt(tcres.RunID, 10)
-	tEnv.queue, err = queue.New(&tcclient.Credentials{
+	tEnv.queue = tcqueue.New(&tcclient.Credentials{
 		ClientID:    tcres.Credentials.ClientID,
 		AccessToken: tcres.Credentials.AccessToken,
 		Certificate: tcres.Credentials.Certificate,
 	})
-
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	return tEnv, func() {
 		err := os.Remove(tEnv.inputFilename)
@@ -209,15 +205,15 @@ func TestCLIUsage(t *testing.T) {
 	badUsage(t, "upload")
 
 	// Conflicting flags
-	badUsage(t, "upload", e.taskID, e.runID, name, "--input", e.inputFilename, "--multipart", "--single-part")
+	badUsage(t, "upload", "--input", e.inputFilename, "--multipart", "--single-part", e.taskID, e.runID, name)
 
 	// Missing mandatory flag
 	badUsage(t, "upload", e.taskID, e.runID, name)
 	badUsage(t, "download", e.taskID, e.runID, name)
 
 	// Wrong flags
-	badUsage(t, "upload", e.taskID, e.runID, name, "--output", e.inputFilename)
-	badUsage(t, "download", e.taskID, e.runID, name, "--input", e.outputFilename)
+	badUsage(t, "upload", "--output", e.inputFilename, e.taskID, e.runID, name)
+	badUsage(t, "download", "--input", e.outputFilename, e.taskID, e.runID, name)
 	badUsage(t, "download", "--url", "--latest", "--output", e.outputFilename)
 }
 
@@ -261,11 +257,11 @@ func TestCorruptedDownloads(t *testing.T) {
 		"--base-url",
 		ts.URL,
 		"download",
-		e.taskID,
-		"cli-corrupt-test",
 		"--latest",
 		"--output",
 		e.outputFilename,
+		e.taskID,
+		"cli-corrupt-test",
 	}
 	err = _main(args)
 
@@ -288,12 +284,12 @@ func TestCLIRuns(t *testing.T) {
 	validateUploadOptions := func(name string, uploadOptions ...string) {
 		t.Run(name, func(t *testing.T) {
 			name := "public/" + name
-			upargs := []string{"upload", e.taskID, e.runID, name, "--input", e.inputFilename}
+			upargs := []string{"upload", "--input", e.inputFilename, e.taskID, e.runID, name}
 			upargs = append(upargs, uploadOptions...)
 			run(t, upargs...)
-			run(t, "download", e.taskID, e.runID, name, "--output", e.outputFilename)
+			run(t, "download", "--output", e.outputFilename, e.taskID, e.runID, name)
 			e.validate()
-			run(t, "download", e.taskID, name, "--latest", "--output", e.outputFilename)
+			run(t, "download", "--latest", "--output", e.outputFilename, e.taskID, name)
 			e.validate()
 		})
 	}
@@ -311,7 +307,7 @@ func TestCLIRuns(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		run(t, "upload", e.taskID, e.runID, name, "--input", e.inputFilename)
+		run(t, "upload", "--input", e.inputFilename, e.taskID, e.runID, name)
 		run(t, "download", "--url", url.String(), "--output", e.outputFilename)
 		e.validate()
 	})
@@ -327,7 +323,7 @@ func TestCLIRuns(t *testing.T) {
 		of.Close()
 		defer os.Remove(filename)
 
-		run(t, "upload", e.taskID, e.runID, name, "--gzip", "--input", filename)
+		run(t, "upload", "--gzip", "--input", filename, e.taskID, e.runID, name)
 		// Unfortunately this will actually write to standard output.  I don't want
 		// to intercept writing to the real standard output, because os.Stdout
 		// behaves in a very specific way.  Basically, I just want to make sure no
@@ -335,6 +331,6 @@ func TestCLIRuns(t *testing.T) {
 		// concerned with is that os.Stdout is an io.Seeker, but all calls to
 		// Seek() on it immediately fail.  There's probably other things, but this
 		// is the minimum that's different
-		run(t, "download", e.taskID, e.runID, name, "--output", "-")
+		run(t, "download", "--output", "-", e.taskID, e.runID, name)
 	})
 }

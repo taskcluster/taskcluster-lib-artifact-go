@@ -12,7 +12,7 @@ import (
 
 	"github.com/taskcluster/slugid-go/slugid"
 	tcclient "github.com/taskcluster/taskcluster-client-go"
-	"github.com/taskcluster/taskcluster-client-go/queue"
+	"github.com/taskcluster/taskcluster-client-go/tcqueue"
 	artifact "github.com/taskcluster/taskcluster-lib-artifact-go"
 )
 
@@ -24,7 +24,7 @@ type testEnv struct {
 }
 
 // Copied from the generic-worker's artifact tests (thanks Pete!)
-func testTask(t *testing.T, taskGroupID string) *queue.TaskDefinitionRequest {
+func testTask(t *testing.T, taskGroupID string) *tcqueue.TaskDefinitionRequest {
 	created := time.Now().UTC()
 	// reset nanoseconds
 	created = created.Add(time.Nanosecond * time.Duration(created.Nanosecond()*-1))
@@ -33,7 +33,7 @@ func testTask(t *testing.T, taskGroupID string) *queue.TaskDefinitionRequest {
 	// expiry in one day, in case we need test results
 	expires := created.AddDate(0, 0, 2)
 
-	return &queue.TaskDefinitionRequest{
+	return &tcqueue.TaskDefinitionRequest{
 		Created:      tcclient.Time(created),
 		Deadline:     tcclient.Time(deadline),
 		Expires:      tcclient.Time(expires),
@@ -57,7 +57,7 @@ func testTask(t *testing.T, taskGroupID string) *queue.TaskDefinitionRequest {
 		Routes:        []string{},
 		SchedulerID:   "test-scheduler",
 		Scopes:        []string{},
-		Tags:          json.RawMessage(`{"CI":"taskcluster-lib-artifact-go"}`),
+		Tags:          map[string]string{"CI": "taskcluster-lib-artifact-go"},
 		Priority:      "lowest",
 		TaskGroupID:   taskGroupID,
 		WorkerType:    "my-workertype",
@@ -162,32 +162,25 @@ func downloadCheck(t *testing.T, client *artifact.Client, expected []byte, taskI
 
 // Create and claim a task, returning a pointer to a Queue which is configured
 // with the credentials for the task
-func createTask(t *testing.T, taskGroupID, taskID, runID string) *queue.Queue {
-	q, err := queue.New(nil)
+func createTask(t *testing.T, taskGroupID, taskID, runID string) *tcqueue.Queue {
+	q := tcqueue.NewFromEnv()
+	_, err := q.CreateTask(taskID, testTask(t, taskGroupID))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	_, err = q.CreateTask(taskID, testTask(t, taskGroupID))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	tcr := queue.TaskClaimRequest{WorkerGroup: "my-worker-group", WorkerID: "my-worker"}
+	tcr := tcqueue.TaskClaimRequest{WorkerGroup: "my-worker-group", WorkerID: "my-worker"}
 	tcres, err := q.ClaimTask(taskID, "0", &tcr)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// We have to restructure the response's credentials into tcclient.Credentials
-	taskQ, err := queue.New(&tcclient.Credentials{
+	taskQ := tcqueue.New(&tcclient.Credentials{
 		ClientID:    tcres.Credentials.ClientID,
 		AccessToken: tcres.Credentials.AccessToken,
 		Certificate: tcres.Credentials.Certificate,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
 	return taskQ
 }
 
