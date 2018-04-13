@@ -51,3 +51,8 @@ tags
 
 # End of https://www.gitignore.io/api/go,git,vim
 
+
+# Unit tests
+/cmd/artifact/testdata/
+/testdata/10mb.dat
+/testdata/request.dat
