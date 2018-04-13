@@ -253,7 +253,7 @@ To work on your own fork of the code:
 ```
 $ cd "${GOPATH}/src/github.com/taskcluster/taskcluster-lib-artifact-go"
 $ git remote add myfork <git url of your fork>
-$ fetch fetch myfork
+$ git fetch myfork
 $ git checkout -t mybranch myfork/mybranch
 ```
 
