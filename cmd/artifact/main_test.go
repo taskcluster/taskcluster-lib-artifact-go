@@ -331,6 +331,6 @@ func TestCLIRuns(t *testing.T) {
 		// concerned with is that os.Stdout is an io.Seeker, but all calls to
 		// Seek() on it immediately fail.  There's probably other things, but this
 		// is the minimum that's different
-		run(t, "download", "--output", "-", e.taskID, e.runID, name)
+		run(t, "download", e.taskID, e.runID, name, "--output", "-")
 	})
 }
