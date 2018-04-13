@@ -10,19 +10,19 @@ import (
 
 	"github.com/taskcluster/slugid-go/slugid"
 	tcclient "github.com/taskcluster/taskcluster-client-go"
-	queue "github.com/taskcluster/taskcluster-client-go/queue"
+	"github.com/taskcluster/taskcluster-client-go/tcqueue"
 )
 
 var taskGroupID = slugid.Nice()
 var taskID = slugid.Nice()
 var runID = "0"
 
-func setupEnvironment() (*queue.Queue, error) {
+func setupEnvironment() (*tcqueue.Queue, error) {
 	// The first large amount of code is set up code to get you into the the
 	// correct task environment.  The expectation is that those using this
 	// library will already have this code set up
 
-	q, err := queue.New(nil)
+	q := tcqueue.NewFromEnv()
 
 	created := time.Now().UTC()
 	// reset nanoseconds
@@ -32,7 +32,7 @@ func setupEnvironment() (*queue.Queue, error) {
 	// expiry in one day, in case we need test results
 	expires := created.AddDate(0, 0, 2)
 
-	taskDefinition := &queue.TaskDefinitionRequest{
+	taskDefinition := &tcqueue.TaskDefinitionRequest{
 		Created:      tcclient.Time(created),
 		Deadline:     tcclient.Time(deadline),
 		Expires:      tcclient.Time(expires),
@@ -56,30 +56,27 @@ func setupEnvironment() (*queue.Queue, error) {
 		Routes:        []string{},
 		SchedulerID:   "test-scheduler",
 		Scopes:        []string{},
-		Tags:          json.RawMessage(`{"CI":"taskcluster-lib-artifact-go"}`),
+		Tags:          map[string]string{"CI": "taskcluster-lib-artifact-go"},
 		Priority:      "lowest",
 		TaskGroupID:   taskGroupID,
 		WorkerType:    "my-workertype",
 	}
-	_, err = q.CreateTask(taskID, taskDefinition)
+	_, err := q.CreateTask(taskID, taskDefinition)
 	if err != nil {
 		return nil, err
 	}
 
-	tcr := queue.TaskClaimRequest{WorkerGroup: "my-worker-group", WorkerID: "my-worker"}
+	tcr := tcqueue.TaskClaimRequest{WorkerGroup: "my-worker-group", WorkerID: "my-worker"}
 	tcres, err := q.ClaimTask(taskID, "0", &tcr)
 	if err != nil {
 		return nil, err
 	}
 
-	taskQ, err := queue.New(&tcclient.Credentials{
+	taskQ := tcqueue.New(&tcclient.Credentials{
 		ClientID:    tcres.Credentials.ClientID,
 		AccessToken: tcres.Credentials.AccessToken,
 		Certificate: tcres.Credentials.Certificate,
 	})
-	if err != nil {
-		return nil, err
-	}
 
 	return taskQ, nil
 
