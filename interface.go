@@ -157,10 +157,7 @@ func (c *Client) Upload(taskID, runID, name string, input io.ReadSeeker, output 
 
 	if multipart {
 		// We don't match the API's structure exactly, so let's do that
-		parts := make([]struct {
-			Sha256 string "json:\"sha256,omitempty\""
-			Size   int64  "json:\"size,omitempty\""
-		}, len(u.Parts))
+		parts := make([]tcqueue.MultipartPart, len(u.Parts))
 		for i := 0; i < len(u.Parts); i++ {
 			parts[i].Sha256 = hex.EncodeToString(u.Parts[i].Sha256)
 			parts[i].Size = u.Parts[i].Size
