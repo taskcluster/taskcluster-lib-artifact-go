@@ -113,12 +113,7 @@ func setup(t *testing.T) (testEnv, func()) {
 		Extra:        json.RawMessage(`{}`),
 		Dependencies: []string{},
 		Requires:     "all-completed",
-		Metadata: struct {
-			Description string `json:"description"`
-			Name        string `json:"name"`
-			Owner       string `json:"owner"`
-			Source      string `json:"source"`
-		}{
+		Metadata: tcqueue.TaskMetadata{
 			Description: "taskcluster-lib-artifact-go test",
 			Name:        "taskcluster-lib-artifact-go test",
 			Owner:       "taskcluster-lib-artifact-go-ci@mozilla.com",
