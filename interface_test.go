@@ -39,12 +39,7 @@ func setupEnvironment() (*tcqueue.Queue, error) {
 		Extra:        json.RawMessage(`{}`),
 		Dependencies: []string{},
 		Requires:     "all-completed",
-		Metadata: struct {
-			Description string `json:"description"`
-			Name        string `json:"name"`
-			Owner       string `json:"owner"`
-			Source      string `json:"source"`
-		}{
+		Metadata: tcqueue.TaskMetadata{
 			Description: "taskcluster-lib-artifact-go example",
 			Name:        "taskcluster-lib-artifact-go example",
 			Owner:       "example",
