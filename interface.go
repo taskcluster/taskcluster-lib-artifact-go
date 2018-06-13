@@ -91,6 +91,20 @@ func (c *Client) GetInternalSizes() (int, int) {
 	return c.chunkSize, c.multipartPartChunkCount * c.chunkSize
 }
 
+// Create an Error artifact.
+func (c *Client) CreateError(taskID, runID, name, reason, message string) error {
+	errorReq := &tcqueue.ErrorArtifactRequest{
+		Expires:     tcclient.Time(time.Now().UTC().AddDate(0, 0, 1)),
+		Message:     message,
+		Reason:      reason,
+		StorageType: "error",
+	}
+
+	logger.Printf("%s", errorReq)
+	return nil
+
+}
+
 // Upload an artifact.  The contents of input will be copied to the beginning
 // of output, optionally with gzip encoding.  Output must be an
 // io.ReadWriteSeeker which has 0 bytes (thus position 0).  We need the output
@@ -121,7 +135,8 @@ func (c *Client) Upload(taskID, runID, name string, input io.ReadSeeker, output 
 	// the first 512 bytes, so let's read those and then seek the input back to 0
 	mimeBuf := make([]byte, 512)
 	_, err = input.Read(mimeBuf)
-	if err != nil {
+	// We check for gracefull EOF to handle the case of a file which has no contents
+	if err != nil && err != io.EOF {
 		return newErrorf(err, "reading 512 bytes from %s to determine mime type", findName(input))
 	}
 	_, err = output.Seek(0, io.SeekStart)
@@ -308,6 +323,10 @@ func (c *Client) DownloadURL(u string, output io.Writer) error {
 	if err != nil {
 		logger.Printf("%s\n%s", cs, redirectBuf.String())
 		return newErrorf(err, "running redirect request for %s", u)
+	}
+
+	if storageType := cs.ResponseHeader.Get("x-taskcluster-artifact-storage-type"); storageType != "" {
+		logger.Printf("Storage Type: %s", storageType)
 	}
 
 	if cs.StatusCode < 300 || cs.StatusCode >= 400 {
