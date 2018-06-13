@@ -40,6 +40,7 @@ type Client struct {
 	chunkSize               int
 	multipartPartChunkCount int
 	AllowInsecure           bool
+	clientForBlindRedirects *http.Client
 }
 
 // DefaultChunkSize is 128KB
@@ -48,14 +49,33 @@ const DefaultChunkSize int = 128 * 1024
 // DefaultPartSize is 100MB
 const DefaultPartSize int = 100 * 1024 * 1024 / DefaultChunkSize
 
+// So in the ideal world, what we'd do is change this library's agent to
+// support content-sha256-secure redirect checking and have it happen for all
+// requests which aren't error, reference, s3 or azure artifact types.  This
+// would be done by writing a checkRedirect function which verified the
+// proposed redirect has valid and correct hashes and lengths then also redoing
+// https-checking by looking for a non-nil req.TLS value.  That's a pretty
+// large overhaul of how the library itself works, so what we're going to do
+// for the timebeing is have a second http client for running these types of
+// requests
+
 // New creates a Client for use
 func New(queue *tcqueue.Queue) *Client {
 	a := newAgent()
+	transport := &http.Transport{
+		MaxIdleConns:       10,
+		IdleConnTimeout:    30 * time.Second,
+		DisableCompression: true,
+	}
+	_client := &http.Client{
+		Transport: transport,
+	}
 	return &Client{
 		agent:                   a,
 		queue:                   queue,
 		chunkSize:               DefaultChunkSize,
 		multipartPartChunkCount: DefaultPartSize,
+		clientForBlindRedirects: _client,
 	}
 }
 
@@ -93,16 +113,53 @@ func (c *Client) GetInternalSizes() (int, int) {
 
 // Create an Error artifact.
 func (c *Client) CreateError(taskID, runID, name, reason, message string) error {
-	errorReq := &tcqueue.ErrorArtifactRequest{
+	errorreq := &tcqueue.ErrorArtifactRequest{
 		Expires:     tcclient.Time(time.Now().UTC().AddDate(0, 0, 1)),
 		Message:     message,
 		Reason:      reason,
 		StorageType: "error",
 	}
 
-	logger.Printf("%s", errorReq)
-	return nil
+	cap, err := json.Marshal(&errorreq)
+	if err != nil {
+		return newErrorf(err, "serializing json request body for createArtifact queue call during creation of error to %s/%s/%s", taskID, runID, name)
+	}
 
+	pareq := tcqueue.PostArtifactRequest(json.RawMessage(cap))
+
+	_, err = c.queue.CreateArtifact(taskID, runID, name, &pareq)
+	if err != nil {
+		return newErrorf(err, "making createArtifact queue call during error creation of %s/%s/%s", taskID, runID, name)
+	}
+
+	return nil
+}
+
+// Create a Reference artifact.
+func (c *Client) CreateReference(taskID, runID, name, url string) error {
+	refreq := &tcqueue.RedirectArtifactRequest{
+		// What?!? Why does a 302 redirect have a content-type???
+		// Since this doesn't really make any sense, we're just going to
+		// make up one which is safe
+		ContentType: "application/octet-stream",
+		Expires:     tcclient.Time(time.Now().UTC().AddDate(0, 0, 1)),
+		StorageType: "reference",
+		URL:         url,
+	}
+
+	cap, err := json.Marshal(&refreq)
+	if err != nil {
+		return newErrorf(err, "serializing json request body for createArtifact queue call during creation of reference %s/%s/%s", taskID, runID, name)
+	}
+
+	pareq := tcqueue.PostArtifactRequest(json.RawMessage(cap))
+
+	_, err = c.queue.CreateArtifact(taskID, runID, name, &pareq)
+	if err != nil {
+		return newErrorf(err, "making createArtifact queue call during reference creation of %s/%s/%s", taskID, runID, name)
+	}
+
+	return nil
 }
 
 // Upload an artifact.  The contents of input will be copied to the beginning
@@ -286,7 +343,9 @@ type stater interface {
 // in memory.  It is the callers responsibility to delete the contents of the
 // output on failure if needed.  If the output also implements the io.Seeker
 // interface, a check that the output is already empty will occur.  The most
-// common output option is likely an ioutil.TempFile() instance.
+// common output option is likely an ioutil.TempFile() instance.  If artifact
+// is an Error type, the contents of the error message will be written to the
+// output and the function will return an ErrErr method.
 func (c *Client) DownloadURL(u string, output io.Writer) error {
 
 	// If we can stat the output, let's see that the size is 0 bytes.  This is an
@@ -320,21 +379,26 @@ func (c *Client) DownloadURL(u string, output io.Writer) error {
 	var redirectBuf bytes.Buffer
 
 	cs, _, err := c.agent.run(request, nil, c.chunkSize, &redirectBuf, false)
-	if err != nil {
+
+	var storageType string
+	if cs.ResponseHeader != nil {
+		storageType = cs.ResponseHeader.Get("x-taskcluster-artifact-storage-type")
+	}
+
+	if err != nil && storageType != "error" {
 		logger.Printf("%s\n%s", cs, redirectBuf.String())
 		return newErrorf(err, "running redirect request for %s", u)
 	}
 
-	if storageType := cs.ResponseHeader.Get("x-taskcluster-artifact-storage-type"); storageType != "" {
-		logger.Printf("Storage Type: %s", storageType)
-	}
+	logger.Printf("Storage Type: %s", storageType)
 
-	if cs.StatusCode < 300 || cs.StatusCode >= 400 {
-		return ErrExpectedRedirect
+	// We have enough information at this point to determine if we have an error
+	// artifact type and how to handle it if so
+	if storageType == "error" {
+		io.Copy(output, &redirectBuf)
+		logger.Print("error artifact written")
+		return ErrErr
 	}
-
-	// Make sure we release the memory stored in the redirect buffer
-	redirectBuf.Reset()
 
 	location := cs.ResponseHeader.Get("Location")
 
@@ -351,6 +415,29 @@ func (c *Client) DownloadURL(u string, output io.Writer) error {
 		return ErrHTTPS
 	}
 
+	// For the reference, s3 and azure, there's nothing to check or verify.
+	if storageType == "reference" || storageType == "s3" || storageType == "azure" {
+		logger.Printf("following blind redirect of %s artifact", storageType)
+		resp, err := http.Get(location)
+		if err != nil {
+			return newErrorf(err, "fetching %s", location)
+		}
+		defer resp.Body.Close()
+		_, err = io.Copy(output, resp.Body)
+		if err != nil {
+			return newErrorf(err, "copying %s response body to output", location)
+		}
+		return nil
+	}
+
+	if cs.StatusCode < 300 || cs.StatusCode >= 400 {
+		return ErrExpectedRedirect
+	}
+
+	// Make sure we release the memory stored in the redirect buffer
+	redirectBuf.Reset()
+
+	// Now let's make the required request
 	request = newRequest(location, "GET", &http.Header{})
 
 	// Now we're going to request the artifact for real.  We're going to write directly

@@ -111,8 +111,27 @@ func TestInterface(t *testing.T) {
 
 	client := New(taskQ)
 
-	t.Run("create-error", func(t *testing.T) {
+	t.Run("error-artifacts", func(t *testing.T) {
 		err = client.CreateError(taskID, runID, "public/error", "invalid-resource-on-worker", "test error message")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var output bytes.Buffer
+		err = client.Download(taskID, runID, "public/error", &output)
+		if err != ErrErr {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("reference-artifacts", func(t *testing.T) {
+		err = client.CreateReference(taskID, runID, "public/reference", "https://www.google.com")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var output bytes.Buffer
+		err = client.Download(taskID, runID, "public/reference", &output)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -121,7 +140,7 @@ func TestInterface(t *testing.T) {
 	t.Run("upload-blob", func(t *testing.T) {
 
 		// We're not interested in logs
-		SetLogOutput(ioutil.Discard)
+		//SetLogOutput(ioutil.Discard)
 
 		// Let's tune the chunk and part size for our system so that we have 16KB
 		// chunks and 5MB parts
