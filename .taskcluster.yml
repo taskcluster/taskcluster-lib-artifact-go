@@ -62,6 +62,7 @@ tasks:
         - |
           :: This counts the number of lines returned by git status to make sure we have not
           :: missed anything important in the .gitignore file.
+          git status
           :: Dump temp file a directory higher, otherwise git status reports the tmp1.txt file!
           git status --porcelain | C:\Windows\System32\find.exe /v /c "" > ..\tmp1.txt
           set /P lines=<..\tmp1.txt
@@ -139,6 +140,7 @@ tasks:
             ineffassign .
             # Make sure we haven't forgotten something in the .gitignore file.
             # Output of wc command can contain spaces on darwin, so no quotes around expression.
+            git status
             test $(git status --porcelain | wc -l) == 0
       mounts:
         - cacheName: taskcluster-lib-artifact-go-checkout
@@ -205,6 +207,7 @@ tasks:
           GORACE=history_size=7 CGO_ENABLED=1 go test -v -race ./...
           "${GOPATH}/bin/ineffassign" .
           # Make sure we haven't forgotten something in the .gitignore file.
+          git status
           test "$(git status --porcelain | wc -l)" == 0
       cache:
         taskcluster-lib-artifact-go-checkout: /go/src
