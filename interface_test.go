@@ -138,6 +138,9 @@ func TestInterface(t *testing.T) {
 	})
 
 	t.Run("upload-blob", func(t *testing.T) {
+		if err = os.MkdirAll("testdata", os.FileMode(0755)); err != nil {
+			t.Fatal(err)
+		}
 
 		// We're not interested in logs
 		//SetLogOutput(ioutil.Discard)
@@ -148,7 +151,7 @@ func TestInterface(t *testing.T) {
 
 		t.Run("public/single-part-identity", func(t *testing.T) {
 			input := createInput(25) // 25MB
-			output, err := ioutil.TempFile(".", ".scratch")
+			output, err := ioutil.TempFile("testdata", ".scratch")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -163,7 +166,7 @@ func TestInterface(t *testing.T) {
 
 		t.Run("public/single-part-gzip", func(t *testing.T) {
 			input := createInput(25) // 25MB
-			output, err := ioutil.TempFile(".", ".scratch")
+			output, err := ioutil.TempFile("testdata", ".scratch")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -177,7 +180,7 @@ func TestInterface(t *testing.T) {
 
 		t.Run("public/multipart-identity", func(t *testing.T) {
 			input := createInput(25) // 25MB
-			output, err := ioutil.TempFile(".", ".scratch")
+			output, err := ioutil.TempFile("testdata", ".scratch")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -191,7 +194,7 @@ func TestInterface(t *testing.T) {
 
 		t.Run("public/multipart-gzip", func(t *testing.T) {
 			input := createInput(25) // 25MB
-			output, err := ioutil.TempFile(".", ".scratch")
+			output, err := ioutil.TempFile("testdata", ".scratch")
 			if err != nil {
 				t.Fatal(err)
 			}

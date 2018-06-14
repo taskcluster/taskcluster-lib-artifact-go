@@ -36,6 +36,10 @@ func testUpload(t *testing.T, gzip bool, mp bool, filename string) {
 	}
 	defer input.Close()
 
+	if err = os.MkdirAll("testdata", os.FileMode(0755)); err != nil {
+		t.Fatal(err)
+	}
+
 	output, err := ioutil.TempFile("testdata", "sp-gz_")
 
 	t.Log(output.Name())

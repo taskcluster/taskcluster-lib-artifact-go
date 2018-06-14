@@ -1,4 +1,0 @@
-This directory is used to store scratch files for the unit tests of this
-library.  Nothing important is stored in here.  We do this instead of using
-/tmp to make sure that the /tmp mount doesn't get filled up with a bunch of big
-files

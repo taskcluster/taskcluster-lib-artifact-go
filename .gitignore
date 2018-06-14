@@ -54,5 +54,6 @@ tags
 
 # Unit tests
 /cmd/artifact/testdata/
-/testdata/10mb.dat
-/testdata/request.dat
+/integration/testdata/
+/testdata/
+
