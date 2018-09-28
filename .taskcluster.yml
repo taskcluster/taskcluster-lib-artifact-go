@@ -75,17 +75,21 @@ tasks:
           directory: gopath1.10.1\src
         - content:
             url: https://storage.googleapis.com/golang/go1.10.1.windows-amd64.zip
+            sha256: 17f7664131202b469f4264161ff3cd0796e8398249d2b646bbe4990301afc678
           directory: go1.10.1
           format: zip
         - content:
             url: https://github.com/git-for-windows/git/releases/download/v2.14.1.windows.1/MinGit-2.14.1-64-bit.zip
+            sha256: 65c12e4959b8874187b68ec37e532fe7fc526e10f6f0f29e699fa1d2449e7d92
           directory: git
           format: zip
         - content:
             url: http://taskcluster/secrets/v1/secret/repo:github.com/taskcluster/taskcluster-lib-artifact-go
+            sha256: ea77921a6e81d3f70989c661e0f179f645a9c5083d9ccae0f276dc79efc1a589
           file: secrets
         - content:
             url: https://github.com/stedolan/jq/releases/download/jq-1.5/jq-win64.exe
+            sha256: ebecd840ba47efbf66822868178cc721a151060937f7ac406e3d31bd015bde94
           file: jq.exe
 
 
@@ -147,13 +151,16 @@ tasks:
           directory: gopath1.10.1/src
         - content:
             url: https://storage.googleapis.com/golang/go1.10.1.darwin-amd64.tar.gz
+            sha256: 0a5bbcbbb0d150338ba346151d2864fd326873beaedf964e2057008c8a4dc557
           directory: go1.10.1
           format: tar.gz
         - content:
             url: http://localhost:8080/secrets/v1/secret/repo:github.com/taskcluster/taskcluster-lib-artifact-go
+            sha256: ea77921a6e81d3f70989c661e0f179f645a9c5083d9ccae0f276dc79efc1a589
           file: secrets
         - content:
             url: https://github.com/stedolan/jq/releases/download/jq-1.5/jq-osx-amd64
+            sha256: 386e92c982a56fe4851468d7a931dfca29560cee306a0e66c6a1bd4065d3dac5
           file: jq
 
 
