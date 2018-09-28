@@ -52,4 +52,11 @@
 // encoding and decoding is done independently of any gzip encoding by the
 // calling code.  This could result in double gzip encoding if a gzip file is
 // passed into Upload() with the gzip argument set to true.
+//
+// Command line application
+//
+// This library also includes a command line application.  The code for it is
+// located in the cmd/artifact directory.  This command line tool can be
+// installed into $GOPATH/bin/artifact by running the command 'go install
+// github.com/taskcluster/taskcluster-lib-artifact-go/cmd/artifact'
 package artifact
