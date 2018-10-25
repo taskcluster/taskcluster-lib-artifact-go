@@ -3,7 +3,7 @@ set -e
 
 echo Updating dependencies
 go get -u ./...
-go get -u github.com/golang/lint/golint
+go get -u golang.org/x/lint/golint
 go get -u github.com/alecthomas/gometalinter
 go get -u github.com/GandalfUK/godoc2ghmd
 gometalinter --install > /dev/null
