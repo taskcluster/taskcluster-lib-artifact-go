@@ -24,3 +24,11 @@ var ErrBadOutputWriter = newError(nil, "output writer is not empty")
 
 // ErrBadSize is returned when a part size or chunk size is invalid
 var ErrBadSize = newError(nil, "invalid part or chunk size")
+
+// ErrErr is an error that marks an error artifact error not library error
+//NOTE: this is not an error in this library, nor is it an error in the
+//taskcluster client.  This signifies that the artifact was created as the
+//error type.  If you're here wondering why you can't download the artifact you
+//requested, what's actually happened is that whatever should've created your
+//artifact broke and stored an Error artifact in its stead
+var ErrErr = newError(nil, "artifact is an error")

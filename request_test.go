@@ -59,6 +59,10 @@ func TestRequestRunning(t *testing.T) {
 
 	client := newAgent()
 
+	if err := os.MkdirAll("testdata", 0755); err != nil {
+		t.Fatal(err)
+	}
+
 	filename := "testdata/request.dat"
 
 	// We want to do a little bit of setup before running the tests
