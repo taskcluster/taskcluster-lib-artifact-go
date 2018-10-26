@@ -138,7 +138,7 @@ func TestInterface(t *testing.T) {
 	})
 
 	t.Run("upload-blob", func(t *testing.T) {
-		if err = os.MkdirAll("testdata", os.FileMode(0755)); err != nil {
+		if err = os.MkdirAll("testdata", 0755); err != nil {
 			t.Fatal(err)
 		}
 

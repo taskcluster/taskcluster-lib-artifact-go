@@ -59,7 +59,7 @@ func TestRequestRunning(t *testing.T) {
 
 	client := newAgent()
 
-	if err := os.MkdirAll("testdata", os.FileMode(0755)); err != nil {
+	if err := os.MkdirAll("testdata", 0755); err != nil {
 		t.Fatal(err)
 	}
 

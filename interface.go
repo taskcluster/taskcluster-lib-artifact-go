@@ -122,7 +122,7 @@ func (c *Client) CreateError(taskID, runID, name, reason, message string) error 
 
 	cap, err := json.Marshal(&errorreq)
 	if err != nil {
-		return newErrorf(err, "serializing json request body for createArtifact queue call during creation of error to %s/%s/%s", taskID, runID, name)
+		panic(newErrorf(err, "serializing json request body for createArtifact queue call during creation of error to %s/%s/%s", taskID, runID, name))
 	}
 
 	pareq := tcqueue.PostArtifactRequest(json.RawMessage(cap))
@@ -149,7 +149,7 @@ func (c *Client) CreateReference(taskID, runID, name, url string) error {
 
 	cap, err := json.Marshal(&refreq)
 	if err != nil {
-		return newErrorf(err, "serializing json request body for createArtifact queue call during creation of reference %s/%s/%s", taskID, runID, name)
+		panic(newErrorf(err, "serializing json request body for createArtifact queue call during creation of reference %s/%s/%s", taskID, runID, name))
 	}
 
 	pareq := tcqueue.PostArtifactRequest(json.RawMessage(cap))
@@ -192,7 +192,7 @@ func (c *Client) Upload(taskID, runID, name string, input io.ReadSeeker, output 
 	// the first 512 bytes, so let's read those and then seek the input back to 0
 	mimeBuf := make([]byte, 512)
 	_, err = input.Read(mimeBuf)
-	// We check for gracefull EOF to handle the case of a file which has no contents
+	// We check for graceful EOF to handle the case of a file which has no contents
 	if err != nil && err != io.EOF {
 		return newErrorf(err, "reading 512 bytes from %s to determine mime type", findName(input))
 	}
@@ -346,6 +346,14 @@ type stater interface {
 // common output option is likely an ioutil.TempFile() instance.  If artifact
 // is an Error type, the contents of the error message will be written to the
 // output and the function will return an ErrErr method.
+//
+// Based on the value of the x-taskcluster-artifact-storage-type http header on
+// the redirect from the queue, the client will handle the download
+// appropriate.  This value is what is set as 'storageType' on artifact
+// creation.  Error objects write the error message to the output Writer and
+// return a non-nil error, ErrErr.  Reference, s3 and azure storage types
+// blindly follow redirects and write the response to output.  Blob artifacts
+// handle redirections and validation as appropriately.
 func (c *Client) DownloadURL(u string, output io.Writer) error {
 
 	// If we can stat the output, let's see that the size is 0 bytes.  This is an

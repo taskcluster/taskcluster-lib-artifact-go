@@ -16,7 +16,7 @@ func setup(t *testing.T) (*os.File, []byte, func()) {
 	var b bytes.Buffer
 	var err error
 
-	if err = os.MkdirAll("testdata", os.FileMode(0755)); err != nil {
+	if err = os.MkdirAll("testdata", 0755); err != nil {
 		t.Fatal(err)
 	}
 
