@@ -26,13 +26,6 @@ type apiRequest struct {
 	Headers map[string]string `json:"headers"`
 }
 
-// blobArtifactResponse is the response from tcqueue.CreateArtifact
-type blobArtifactResponse struct {
-	StorageType string        `json:"storageType"`
-	Requests    []apiRequest  `json:"requests"`
-	Expires     tcclient.Time `json:"expires"`
-}
-
 // Client knows how to upload and download blob artifacts
 type Client struct {
 	agent                   client
@@ -249,7 +242,7 @@ func (c *Client) Upload(taskID, runID, name string, input io.ReadSeeker, output 
 		return newErrorf(err, "making createArtifact queue call during upload of %s to %s/%s/%s", findName(input), taskID, runID, name)
 	}
 
-	var bares blobArtifactResponse
+	var bares tcqueue.BlobArtifactResponse
 
 	err = json.Unmarshal(*resp, &bares)
 	if err != nil {
