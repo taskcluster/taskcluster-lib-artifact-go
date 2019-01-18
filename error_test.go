@@ -39,8 +39,7 @@ func TestErrorsPlainErrorSuper(t *testing.T) {
 }
 
 func TestErrorsSuperWithSuper(t *testing.T) {
-	var actual error // ensure exact type
-	actual = func() error {
+	actual := func() error {
 		return newError(func() error {
 			return newError(func() error {
 				return newError(func() error {

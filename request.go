@@ -39,7 +39,10 @@ func newRequestFromStringMap(url, method string, headers map[string]string) (req
 
 func (r request) String() string {
 	var buf bytes.Buffer
-	r.Header.Write(&buf)
+	err := r.Header.Write(&buf)
+	if err != nil {
+		return fmt.Sprintf("Could not read http request headers - error: %v", err)
+	}
 	return fmt.Sprintf("%s %s\nHEADERS:\n%s", strings.ToUpper(r.Method), r.URL, buf.String())
 }
 
@@ -95,16 +98,26 @@ type callSummary struct {
 func (cs callSummary) String() string {
 	var reqHBuf bytes.Buffer
 	if cs.RequestHeader != nil {
-		cs.RequestHeader.Write(&reqHBuf)
+		err := cs.RequestHeader.Write(&reqHBuf)
+		if err != nil {
+			// error not possible
+			_, _ = reqHBuf.Write([]byte(fmt.Sprintf("Could not read HTTP request headers - error: %v", err)))
+		}
 	} else {
-		reqHBuf.Write([]byte("No Request Headers"))
+		// error not possible
+		_, _ = reqHBuf.Write([]byte("No Request Headers"))
 	}
 
 	var resHBuf bytes.Buffer
 	if cs.ResponseHeader != nil {
-		cs.ResponseHeader.Write(&resHBuf)
+		err := cs.ResponseHeader.Write(&resHBuf)
+		if err != nil {
+			// error not possible
+			_, _ = resHBuf.Write([]byte(fmt.Sprintf("Could not read HTTP response headers - error: %v", err)))
+		}
 	} else {
-		resHBuf.Write([]byte("No Response Headers"))
+		// error not possible
+		_, _ = resHBuf.Write([]byte("No Response Headers"))
 	}
 
 	var verified string
@@ -141,8 +154,7 @@ func (cs callSummary) String() string {
 // transaction.  Example of a retryable error is a 500 series error or local IO
 // failure.  Example of a non-retryable error would be getting passed in a
 // request which has an unparsable Content-Length header
-func (c client) run(request request, inputReader io.Reader, chunkSize int, outputWriter io.Writer, verify bool) (callSummary, bool, error) {
-	cs := callSummary{}
+func (c client) run(request request, inputReader io.Reader, chunkSize int, outputWriter io.Writer, verify bool) (cs callSummary, retryable bool, err error) {
 	cs.URL = request.URL
 	cs.Method = request.Method
 
@@ -161,10 +173,12 @@ func (c client) run(request request, inputReader io.Reader, chunkSize int, outpu
 		// internal data structures to be able to run the Sum() method and get
 		// useful output
 		var emptyslice []byte
-		reqBodyHash.Write(emptyslice)
+		// error not possible
+		_, _ = reqBodyHash.Write(emptyslice)
 	}
 
-	httpRequest, err := http.NewRequest(request.Method, request.URL, body)
+	var httpRequest *http.Request
+	httpRequest, err = http.NewRequest(request.Method, request.URL, body)
 	if err != nil {
 		return cs, false, newErrorf(err, "making %s request to %s", request.Method, request.URL)
 	}
@@ -198,7 +212,8 @@ func (c client) run(request request, inputReader io.Reader, chunkSize int, outpu
 	cs.RequestLength = reqBodyCounter.count
 	cs.RequestSha256 = hex.EncodeToString(reqBodyHash.Sum(nil))
 	// Run the actual request
-	resp, err := c.client.Do(httpRequest)
+	var resp *http.Response
+	resp, err = c.client.Do(httpRequest)
 	if err != nil {
 		return cs, false, newErrorf(err, "running %s request to %s", request.Method, request.URL)
 	}
@@ -211,7 +226,14 @@ func (c client) run(request request, inputReader io.Reader, chunkSize int, outpu
 	cs.StatusCode = resp.StatusCode
 	cs.ResponseHeader = &resp.Header
 
-	defer resp.Body.Close()
+	// if we have an error closing the body, we should return the error, but only
+	// if no other error has already been set
+	defer func() {
+		closeErr := resp.Body.Close()
+		if closeErr != nil && err == nil {
+			err = closeErr
+		}
+	}()
 
 	// If the HTTP library reads in a different number of bytes than we're
 	// expecting to have, we know that something is wrong.  This could also be a
@@ -224,7 +246,8 @@ func (c client) run(request request, inputReader io.Reader, chunkSize int, outpu
 	}
 
 	if resp.StatusCode >= 500 {
-		if errBody, err := ioutil.ReadAll(resp.Body); err == nil {
+		var errBody []byte
+		if errBody, err = ioutil.ReadAll(resp.Body); err == nil {
 			logger.Printf("Retryable Error %s\nBody:\n%s", cs, errBody)
 		}
 		return cs, true, newErrorf(err, "received %s (retryable)", resp.Status)
@@ -232,7 +255,8 @@ func (c client) run(request request, inputReader io.Reader, chunkSize int, outpu
 
 	// 400-series errors are never retryable
 	if resp.StatusCode >= 400 {
-		if errBody, err := ioutil.ReadAll(resp.Body); err == nil {
+		var errBody []byte
+		if errBody, err = ioutil.ReadAll(resp.Body); err == nil {
 			logger.Printf("Non-Retryable Error %s\nBody:\n%s", cs, errBody)
 		}
 		return cs, false, newErrorf(err, "received %s (non-retryable)", resp.Status)
@@ -264,7 +288,8 @@ func (c client) run(request request, inputReader io.Reader, chunkSize int, outpu
 		fallthrough
 	case "identity":
 	case "gzip":
-		zr, err := gzip.NewReader(input)
+		var zr *gzip.Reader
+		zr, err = gzip.NewReader(input)
 		if err != nil {
 			return cs, false, newErrorf(err, "creating gzip reader for %s to %s", request.Method, request.URL)
 		}
@@ -325,7 +350,8 @@ func (c client) run(request request, inputReader io.Reader, chunkSize int, outpu
 			logger.Printf("Expected header X-Amz-Meta-Content-Length to have a value")
 			valid = false
 		} else {
-			i, err := strconv.ParseInt(cSize, 10, 64)
+			var i int64
+			i, err = strconv.ParseInt(cSize, 10, 64)
 			if err != nil {
 				// Retryable because this is a sign of corrupted data.  Let's try once
 				// more
@@ -338,7 +364,8 @@ func (c client) run(request request, inputReader io.Reader, chunkSize int, outpu
 		if tSize := resp.Header.Get("x-amz-meta-transfer-length"); tSize == "" {
 			expectedTransferSize = expectedSize
 		} else {
-			i, err := strconv.ParseInt(tSize, 10, 64)
+			var i int64
+			i, err = strconv.ParseInt(tSize, 10, 64)
 			if err != nil {
 				// Retryable because this is a sign of corrupted data.  Let's try once
 				// more
