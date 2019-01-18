@@ -96,9 +96,11 @@ func hashFileParts(input io.ReadSeeker, size int64, chunkSize, chunksInPart int)
 			return []part{}, []byte{}, newErrorf(err, "reading from %s", findName(input))
 		}
 
-		// NOTE: Per docs, this function never returns an error
-		hash.Write(buf[:nBytes])
-		partHash.Write(buf[:nBytes])
+		// The hash.Hash interface docs state that the Write function never
+		// returns an error, so we can ignore errors returned from the two
+		// method invocations below.
+		_, _ = hash.Write(buf[:nBytes])
+		_, _ = partHash.Write(buf[:nBytes])
 
 		currentPartSize += int64(nBytes)
 
@@ -220,7 +222,7 @@ func multipartUpload(input io.ReadSeeker, output io.ReadWriteSeeker, gzip bool, 
 
 	// After we've written single part file over to the new file, we need to seek
 	// back to the start so we can break it up into hash chunks
-	if _, err := output.Seek(0, io.SeekStart); err != nil {
+	if _, err = output.Seek(0, io.SeekStart); err != nil {
 		return upload{}, newErrorf(err, "error seeking output %s back to beginning for multipart upload", findName(output))
 	}
 

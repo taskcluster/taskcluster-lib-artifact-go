@@ -19,7 +19,7 @@ const emptySha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b785
 
 // Set up a test server.  It is the responsibility of the caller
 // to run the .Close() method on the returned server
-func createServer(sc int, cl, ch, tl, th, ce string, body []byte) *httptest.Server {
+func createServer(sc int, cl, ch, tl, th, ce string, b []byte) *httptest.Server {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("x-amz-meta-content-length", cl)
 		w.Header().Set("x-amz-meta-content-sha256", ch)
@@ -34,8 +34,8 @@ func createServer(sc int, cl, ch, tl, th, ce string, body []byte) *httptest.Serv
 		}
 		w.WriteHeader(sc)
 
-		if len(body) != 0 {
-			w.Write(body)
+		if len(b) != 0 {
+			w.Write(b)
 		}
 	}))
 
@@ -88,14 +88,14 @@ func TestRequestRunning(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	body, err := ioutil.ReadAll(_in)
+	b, err := ioutil.ReadAll(_in)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	var _gzipBody bytes.Buffer
 	zw := gzip.NewWriter(&_gzipBody)
-	_, err = zw.Write(body)
+	_, err = zw.Write(b)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,13 +109,13 @@ func TestRequestRunning(t *testing.T) {
 			w.Header().Set("Content-Length", "0")
 			w.WriteHeader(200)
 			var buf bytes.Buffer
-			_, err := io.Copy(&buf, r.Body)
+			_, err = io.Copy(&buf, r.Body)
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			if !bytes.Equal(buf.Bytes(), body) {
-				t.Fatalf("Request body not as expected. %d bytes vs expected %d", buf.Len(), len(body))
+			if !bytes.Equal(buf.Bytes(), b) {
+				t.Fatalf("Request body not as expected. %d bytes vs expected %d", buf.Len(), len(b))
 			}
 		}))
 		defer ts.Close()
@@ -126,18 +126,20 @@ func TestRequestRunning(t *testing.T) {
 			header := &http.Header{}
 			header.Set("Content-Length", strconv.Itoa(10*1024*1024))
 			req := newRequest(ts.URL, "PUT", header)
-			bodyFile, err := os.Open(filename)
+			var bodyFile *os.File
+			bodyFile, err = os.Open(filename)
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			body, err := newBody(bodyFile, 0, 10*1024*1024)
+			var bdy *body
+			bdy, err = newBody(bodyFile, 0, 10*1024*1024)
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer body.Close()
+			defer bdy.Close()
 
-			_, _, err = client.run(req, body, 1024, nil, false)
+			_, _, err = client.run(req, bdy, 1024, nil, false)
 
 			if err != nil {
 				t.Fatal(err)
@@ -146,18 +148,20 @@ func TestRequestRunning(t *testing.T) {
 
 		t.Run("without content length header", func(t *testing.T) {
 			req := newRequest(ts.URL, "PUT", nil)
-			bodyFile, err := os.Open(filename)
+			var bodyFile *os.File
+			bodyFile, err = os.Open(filename)
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			body, err := newBody(bodyFile, 0, 10*1024*1024)
+			var bdy *body
+			bdy, err = newBody(bodyFile, 0, 10*1024*1024)
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer body.Close()
+			defer bdy.Close()
 
-			_, _, err = client.run(req, body, 1024, nil, false)
+			_, _, err = client.run(req, bdy, 1024, nil, false)
 
 			if err != nil {
 				t.Fatal(err)
@@ -168,7 +172,7 @@ func TestRequestRunning(t *testing.T) {
 	t.Run("reads response body correctly", func(t *testing.T) {
 
 		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			_, err := io.Copy(w, bytes.NewBuffer(body))
+			_, err = io.Copy(w, bytes.NewBuffer(b))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -181,7 +185,7 @@ func TestRequestRunning(t *testing.T) {
 
 		_, _, err = client.run(req, nil, 1024, &output, false)
 
-		if !bytes.Equal(output.Bytes(), body) {
+		if !bytes.Equal(output.Bytes(), b) {
 			t.Fatalf("Response output does not match expected value")
 		}
 
@@ -198,19 +202,19 @@ func TestRequestRunning(t *testing.T) {
 				defer ts.Close()
 
 				req := newRequest(ts.URL, "GET", nil)
-				_, _, err := client.run(req, nil, 1024, nil, true)
+				_, _, err = client.run(req, nil, 1024, nil, true)
 				if err != nil {
 					t.Fatal(err)
 				}
 			})
 
 			t.Run("can run a request", func(t *testing.T) {
-				ts := createServer(http.StatusOK, sl(body), hb(body), "", "", "", body)
+				ts := createServer(http.StatusOK, sl(b), hb(b), "", "", "", b)
 				defer ts.Close()
 
 				req := newRequest(ts.URL, "GET", nil)
 
-				_, _, err := client.run(req, nil, 1024, nil, true)
+				_, _, err = client.run(req, nil, 1024, nil, true)
 
 				if err != nil {
 					t.Fatal(err)
@@ -218,12 +222,12 @@ func TestRequestRunning(t *testing.T) {
 			})
 
 			t.Run("can run a request with redundant transfer headers", func(t *testing.T) {
-				ts := createServer(http.StatusOK, sl(body), hb(body), sl(body), hb(body), "identity", body)
+				ts := createServer(http.StatusOK, sl(b), hb(b), sl(b), hb(b), "identity", b)
 				defer ts.Close()
 
 				req := newRequest(ts.URL, "GET", nil)
 
-				_, _, err := client.run(req, nil, 1024, nil, true)
+				_, _, err = client.run(req, nil, 1024, nil, true)
 
 				if err != nil {
 					t.Fatal(err)
@@ -231,12 +235,12 @@ func TestRequestRunning(t *testing.T) {
 			})
 
 			t.Run("can run a request with incorrect redundant transfer hash", func(t *testing.T) {
-				ts := createServer(http.StatusOK, sl(body), hb(body), sl(body), hb(gzipBody), "identity", body)
+				ts := createServer(http.StatusOK, sl(b), hb(b), sl(b), hb(gzipBody), "identity", b)
 				defer ts.Close()
 
 				req := newRequest(ts.URL, "GET", nil)
 
-				_, _, err := client.run(req, nil, 1024, nil, true)
+				_, _, err = client.run(req, nil, 1024, nil, true)
 
 				if err == nil {
 					t.Fatal(err)
@@ -244,12 +248,12 @@ func TestRequestRunning(t *testing.T) {
 			})
 
 			t.Run("returns error when content length is wrong", func(t *testing.T) {
-				ts := createServer(http.StatusOK, "123456", hb(body), "", "", "", body)
+				ts := createServer(http.StatusOK, "123456", hb(b), "", "", "", b)
 				defer ts.Close()
 
 				req := newRequest(ts.URL, "GET", nil)
 
-				_, _, err := client.run(req, nil, 1024, nil, true)
+				_, _, err = client.run(req, nil, 1024, nil, true)
 
 				// do better error checking that we got the expected error
 				if err == nil {
@@ -258,12 +262,12 @@ func TestRequestRunning(t *testing.T) {
 			})
 
 			t.Run("returns error when the content hash is wrong", func(t *testing.T) {
-				ts := createServer(http.StatusOK, sl(body), hb([]byte("notcorrect")), "", "", "", body)
+				ts := createServer(http.StatusOK, sl(b), hb([]byte("notcorrect")), "", "", "", b)
 				defer ts.Close()
 
 				req := newRequest(ts.URL, "GET", nil)
 
-				_, _, err := client.run(req, nil, 1024, nil, true)
+				_, _, err = client.run(req, nil, 1024, nil, true)
 
 				// do better error checking that we got the expected error
 				if err == nil {
@@ -274,7 +278,7 @@ func TestRequestRunning(t *testing.T) {
 
 		t.Run("gzip encoding", func(t *testing.T) {
 			t.Run("can run a request", func(t *testing.T) {
-				ts := createServer(http.StatusOK, sl(body), hb(body), sl(gzipBody), hb(gzipBody), "gzip", gzipBody)
+				ts := createServer(http.StatusOK, sl(b), hb(b), sl(gzipBody), hb(gzipBody), "gzip", gzipBody)
 				defer ts.Close()
 
 				req := newRequest(ts.URL, "GET", nil)
@@ -288,7 +292,7 @@ func TestRequestRunning(t *testing.T) {
 
 			t.Run("returns error for incorrect transfer hash", func(t *testing.T) {
 
-				ts := createServer(http.StatusOK, sl(body), hb(body), sl(gzipBody), hb(body), "gzip", gzipBody)
+				ts := createServer(http.StatusOK, sl(b), hb(b), sl(gzipBody), hb(b), "gzip", gzipBody)
 				defer ts.Close()
 
 				req := newRequest(ts.URL, "GET", nil)
@@ -302,7 +306,7 @@ func TestRequestRunning(t *testing.T) {
 
 			t.Run("returns error for incorrect transfer length", func(t *testing.T) {
 
-				ts := createServer(http.StatusOK, sl(body), hb(body), "123456", hb(body), "gzip", gzipBody)
+				ts := createServer(http.StatusOK, sl(b), hb(b), "123456", hb(b), "gzip", gzipBody)
 				defer ts.Close()
 
 				req := newRequest(ts.URL, "GET", nil)
@@ -316,7 +320,7 @@ func TestRequestRunning(t *testing.T) {
 
 			t.Run("returns error for invalid gzip bodies", func(t *testing.T) {
 
-				ts := createServer(http.StatusOK, sl(body), hb(body), sl(body), hb(body), "gzip", body)
+				ts := createServer(http.StatusOK, sl(b), hb(b), sl(b), hb(b), "gzip", b)
 				defer ts.Close()
 
 				req := newRequest(ts.URL, "GET", nil)

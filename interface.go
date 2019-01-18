@@ -17,15 +17,6 @@ import (
 // TODO implement an in memory 'file'
 // TODO implement 'redirect' and 'error' artifact types?
 
-// We need this different from the request.go:request type because that struct
-// uses http.Header headers and our api returns a different type of headers.
-// This would be a great cleanup one day
-type apiRequest struct {
-	URL     string            `json:"url"`
-	Method  string            `json:"method"`
-	Headers map[string]string `json:"headers"`
-}
-
 // Client knows how to upload and download blob artifacts
 type Client struct {
 	agent                   client
@@ -104,7 +95,7 @@ func (c *Client) GetInternalSizes() (int, int) {
 	return c.chunkSize, c.multipartPartChunkCount * c.chunkSize
 }
 
-// Create an Error artifact.
+// CreateError creates an Error artifact.
 func (c *Client) CreateError(taskID, runID, name, reason, message string) error {
 	errorreq := &tcqueue.ErrorArtifactRequest{
 		Expires:     tcclient.Time(time.Now().UTC().AddDate(0, 0, 1)),
@@ -128,7 +119,7 @@ func (c *Client) CreateError(taskID, runID, name, reason, message string) error 
 	return nil
 }
 
-// Create a Reference artifact.
+// CreateReference creates a Reference artifact.
 func (c *Client) CreateReference(taskID, runID, name, url string) error {
 	refreq := &tcqueue.RedirectArtifactRequest{
 		// What?!? Why does a 302 redirect have a content-type???
@@ -268,7 +259,8 @@ func (c *Client) Upload(taskID, runID, name string, input io.ReadSeeker, output 
 	// ReadSeekers and have the factory return a ReadSeeker for each
 	// request body.  Maybe we really need a ReaderAtSeekCloser...
 	for i, r := range bares.Requests {
-		req, err := newRequestFromStringMap(r.URL, r.Method, r.Headers)
+		var req request
+		req, err = newRequestFromStringMap(r.URL, r.Method, r.Headers)
 		if err != nil {
 			return newErrorf(err, "creating request %s to %s for upload of %s to %s/%s/%s", r.Method, r.URL, findName(input), taskID, runID, name)
 		}
@@ -296,9 +288,10 @@ func (c *Client) Upload(taskID, runID, name string, input io.ReadSeeker, output 
 		// error message and we'd like to print that
 		var outputBuf bytes.Buffer
 
-		cs, _, err := c.agent.run(req, b, c.chunkSize, &outputBuf, false)
+		var cs callSummary
+		cs, _, err = c.agent.run(req, b, c.chunkSize, &outputBuf, false)
 		if err != nil {
-			logger.Printf("%s\n%s", cs, outputBuf.String())
+			logger.Printf("%s\n%v", cs, outputBuf.String())
 			return newErrorf(err, "reading bytes %d to %d of %s for %s to %s to upload to %s/%s/%s", start, end, findName(input), r.Method, r.URL, taskID, runID, name)
 		}
 
@@ -342,18 +335,19 @@ type stater interface {
 //
 // Based on the value of the x-taskcluster-artifact-storage-type http header on
 // the redirect from the queue, the client will handle the download
-// appropriate.  This value is what is set as 'storageType' on artifact
+// appropriately.  This value is what is set as 'storageType' on artifact
 // creation.  Error objects write the error message to the output Writer and
 // return a non-nil error, ErrErr.  Reference, s3 and azure storage types
 // blindly follow redirects and write the response to output.  Blob artifacts
-// handle redirections and validation as appropriately.
-func (c *Client) DownloadURL(u string, output io.Writer) error {
+// handle redirections and validation appropriately.
+func (c *Client) DownloadURL(u string, output io.Writer) (err error) {
 
 	// If we can stat the output, let's see that the size is 0 bytes.  This is an
 	// extra safety check, so we're only going to fail if *can* stat the output
 	// and that response indicates an invalid value.
 	if s, ok := output.(stater); ok {
-		fi, err := s.Stat()
+		var fi os.FileInfo
+		fi, err = s.Stat()
 		// We don't care about errors calling Stat().  We'll just ignore the call
 		// and continue.  This is an extra check, not a mandatory one
 		if err == nil && fi.Size() != 0 {
@@ -369,17 +363,19 @@ func (c *Client) DownloadURL(u string, output io.Writer) error {
 	// let's seek 0 bytes from the end and determine the new offset which is the
 	// file's size
 	if s, ok := output.(io.Seeker); ok {
-		size, err := s.Seek(0, io.SeekEnd)
+		var size int64
+		size, err = s.Seek(0, io.SeekEnd)
 		if err == nil && size != 0 {
 			return ErrBadOutputWriter
 		}
 	}
 
-	request := newRequest(u, "GET", &http.Header{})
+	r := newRequest(u, "GET", &http.Header{})
 
 	var redirectBuf bytes.Buffer
 
-	cs, _, err := c.agent.run(request, nil, c.chunkSize, &redirectBuf, false)
+	var cs callSummary
+	cs, _, err = c.agent.run(r, nil, c.chunkSize, &redirectBuf, false)
 
 	var storageType string
 	if cs.ResponseHeader != nil {
@@ -387,7 +383,7 @@ func (c *Client) DownloadURL(u string, output io.Writer) error {
 	}
 
 	if err != nil && storageType != "error" {
-		logger.Printf("%s\n%s", cs, redirectBuf.String())
+		logger.Printf("%s\n%v", cs, redirectBuf.String())
 		return newErrorf(err, "running redirect request for %s", u)
 	}
 
@@ -396,7 +392,10 @@ func (c *Client) DownloadURL(u string, output io.Writer) error {
 	// We have enough information at this point to determine if we have an error
 	// artifact type and how to handle it if so
 	if storageType == "error" {
-		io.Copy(output, &redirectBuf)
+		_, err = io.Copy(output, &redirectBuf)
+		if err != nil {
+			return newErrorf(err, "copying redirect buffer to output writer")
+		}
 		logger.Print("error artifact written")
 		return ErrErr
 	}
@@ -407,7 +406,8 @@ func (c *Client) DownloadURL(u string, output io.Writer) error {
 		return ErrBadRedirect
 	}
 
-	resourceURL, err := url.Parse(location)
+	var resourceURL *url.URL
+	resourceURL, err = url.Parse(location)
 	if err != nil {
 		return newErrorf(err, "parsing Location header value %s for %s", location, u)
 	}
@@ -419,11 +419,19 @@ func (c *Client) DownloadURL(u string, output io.Writer) error {
 	// For the reference, s3 and azure, there's nothing to check or verify.
 	if storageType == "reference" || storageType == "s3" || storageType == "azure" {
 		logger.Printf("following blind redirect of %s artifact", storageType)
-		resp, err := http.Get(location)
+		var resp *http.Response
+		resp, err = http.Get(location)
 		if err != nil {
 			return newErrorf(err, "fetching %s", location)
 		}
-		defer resp.Body.Close()
+		// if we have an error closing the body, we should return the error, but only
+		// if no other error has already been set
+		defer func() {
+			closeErr := resp.Body.Close()
+			if closeErr != nil && err == nil {
+				err = closeErr
+			}
+		}()
 		_, err = io.Copy(output, resp.Body)
 		if err != nil {
 			return newErrorf(err, "copying %s response body to output", location)
@@ -439,14 +447,14 @@ func (c *Client) DownloadURL(u string, output io.Writer) error {
 	redirectBuf.Reset()
 
 	// Now let's make the required request
-	request = newRequest(location, "GET", &http.Header{})
+	r = newRequest(location, "GET", &http.Header{})
 
 	// Now we're going to request the artifact for real.  We're going to write directly
 	// to the outputWriter.  This does mean, unfortunately, that the outputWriter will
-	// contain the
-	cs, _, err = c.agent.run(request, nil, c.chunkSize, output, true)
+	// contain the potatoes.
+	cs, _, err = c.agent.run(r, nil, c.chunkSize, output, true)
 	if err != nil {
-		return err
+		return
 	}
 
 	if cs.StatusCode >= 300 {

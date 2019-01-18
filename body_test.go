@@ -33,7 +33,7 @@ func setup(t *testing.T) (*os.File, []byte, func()) {
 	for i := 0; i < 256; i++ {
 		// Using repeated bytes is nice for debugging purposes
 		if _, ok := os.LookupEnv("USE_REPEATED_BYTES"); ok {
-			_, err := out.Write(allTheBytes)
+			_, err = out.Write(allTheBytes)
 			if err != nil {
 				t.Fatal(err)
 			}
