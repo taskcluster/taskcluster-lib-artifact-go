@@ -291,7 +291,7 @@ func (c *Client) Upload(taskID, runID, name string, input io.ReadSeeker, output 
 		var cs callSummary
 		cs, _, err = c.agent.run(req, b, c.chunkSize, &outputBuf, false)
 		if err != nil {
-			logger.Printf("%s\n%v", cs, outputBuf.String())
+			logger.Printf("%s\n%v", cs, &outputBuf)
 			return newErrorf(err, "reading bytes %d to %d of %s for %s to %s to upload to %s/%s/%s", start, end, findName(input), r.Method, r.URL, taskID, runID, name)
 		}
 
@@ -383,7 +383,7 @@ func (c *Client) DownloadURL(u string, output io.Writer) (err error) {
 	}
 
 	if err != nil && storageType != "error" {
-		logger.Printf("%s\n%v", cs, redirectBuf.String())
+		logger.Printf("%s\n%v", cs, &redirectBuf)
 		return newErrorf(err, "running redirect request for %s", u)
 	}
 
