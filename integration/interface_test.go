@@ -175,7 +175,7 @@ func createTask(t *testing.T, taskGroupID, taskID, runID string) *tcqueue.Queue 
 		ClientID:    tcres.Credentials.ClientID,
 		AccessToken: tcres.Credentials.AccessToken,
 		Certificate: tcres.Credentials.Certificate,
-	})
+	}, os.Getenv("TASKCLUSTER_ROOT_URL"))
 	return taskQ
 }
 

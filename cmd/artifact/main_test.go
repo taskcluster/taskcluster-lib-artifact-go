@@ -149,7 +149,7 @@ func setup(t *testing.T) (testEnv, func()) {
 		ClientID:    tcres.Credentials.ClientID,
 		AccessToken: tcres.Credentials.AccessToken,
 		Certificate: tcres.Credentials.Certificate,
-	})
+	}, os.Getenv("TASKCLUSTER_ROOT_URL"))
 
 	return tEnv, func() {
 		err := os.Remove(tEnv.inputFilename)
@@ -163,8 +163,15 @@ func setup(t *testing.T) (testEnv, func()) {
 	}
 }
 
-func run(t *testing.T, args ...string) {
-	fullargs := append([]string{"artifact", "-q"}, args...)
+func (e testEnv) run(t *testing.T, args ...string) {
+	fullargs := append([]string{
+		"artifact",
+		"--base-url", e.queue.BaseURL,
+		"--client-id", e.queue.Credentials.ClientID,
+		"--access-token", e.queue.Credentials.AccessToken,
+		"--certificate", e.queue.Credentials.Certificate,
+	}, args...)
+	t.Logf("Running artifact command with args %#v", fullargs)
 	err := _main(fullargs)
 	if ecErr, ok := err.(*cli.ExitError); ok {
 		if ecErr != nil {
@@ -279,12 +286,18 @@ func TestCLIRuns(t *testing.T) {
 	validateUploadOptions := func(name string, uploadOptions ...string) {
 		t.Run(name, func(t *testing.T) {
 			name := "public/" + name
-			upargs := []string{"upload", "--input", e.inputFilename, e.taskID, e.runID, name}
+			upargs := []string{
+				"upload",
+				"--input", e.inputFilename,
+				e.taskID,
+				e.runID,
+				name,
+			}
 			upargs = append(upargs, uploadOptions...)
-			run(t, upargs...)
-			run(t, "download", "--output", e.outputFilename, e.taskID, e.runID, name)
+			e.run(t, upargs...)
+			e.run(t, "download", "--output", e.outputFilename, e.taskID, e.runID, name)
 			e.validate()
-			run(t, "download", "--latest", "--output", e.outputFilename, e.taskID, name)
+			e.run(t, "download", "--latest", "--output", e.outputFilename, e.taskID, name)
 			e.validate()
 		})
 	}
@@ -302,8 +315,8 @@ func TestCLIRuns(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		run(t, "upload", "--input", e.inputFilename, e.taskID, e.runID, name)
-		run(t, "download", "--url", url.String(), "--output", e.outputFilename)
+		e.run(t, "upload", "--input", e.inputFilename, e.taskID, e.runID, name)
+		e.run(t, "download", "--url", url.String(), "--output", e.outputFilename)
 		e.validate()
 	})
 
@@ -318,7 +331,7 @@ func TestCLIRuns(t *testing.T) {
 		of.Close()
 		defer os.Remove(filename)
 
-		run(t, "upload", "--gzip", "--input", filename, e.taskID, e.runID, name)
+		e.run(t, "upload", "--gzip", "--input", filename, e.taskID, e.runID, name)
 		// Unfortunately this will actually write to standard output.  I don't want
 		// to intercept writing to the real standard output, because os.Stdout
 		// behaves in a very specific way.  Basically, I just want to make sure no
@@ -326,6 +339,6 @@ func TestCLIRuns(t *testing.T) {
 		// concerned with is that os.Stdout is an io.Seeker, but all calls to
 		// Seek() on it immediately fail.  There's probably other things, but this
 		// is the minimum that's different
-		run(t, "download", "--output", "-", e.taskID, e.runID, name)
+		e.run(t, "download", "--output", "-", e.taskID, e.runID, name)
 	})
 }
