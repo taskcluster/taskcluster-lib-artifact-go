@@ -65,6 +65,11 @@ func _main(args []string) error {
 
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
+			Name:   "root-url",
+			EnvVar: "TASKCLUSTER_ROOT_URL",
+			Usage:  "set root URL to `ROOT_URL`",
+		},
+		cli.StringFlag{
 			Name:   "client-id",
 			EnvVar: "TASKCLUSTER_CLIENT_ID",
 			Usage:  "set client id to `CLIENT_ID`",
@@ -82,8 +87,7 @@ func _main(args []string) error {
 		cli.StringFlag{
 			Name:   "base-url",
 			EnvVar: "QUEUE_BASE_URL",
-			Usage:  "set queue's `BASE_URL`",
-			Value:  tcqueue.DefaultBaseURL,
+			Usage:  "set queue's `BASE_URL` (takes precedence over `ROOT_URL`)",
 		},
 		cli.StringFlag{
 			Name:   "chunk-size",
@@ -139,7 +143,7 @@ func _main(args []string) error {
 					ClientID:    c.GlobalString("client-id"),
 					AccessToken: c.GlobalString("access-token"),
 					Certificate: c.GlobalString("certificate"),
-				})
+				}, c.GlobalString("root-url"))
 
 				if c.GlobalIsSet("base-url") {
 					q.BaseURL = c.GlobalString("base-url")
@@ -148,7 +152,8 @@ func _main(args []string) error {
 				client := artifact.New(q)
 
 				if c.GlobalIsSet("chunk-size") {
-					cz, err := units.ParseBase2Bytes(c.String("chunk-size"))
+					var cz units.Base2Bytes
+					cz, err = units.ParseBase2Bytes(c.String("chunk-size"))
 					if err != nil {
 						return cli.NewExitError(err.Error(), ErrInternal)
 					}
@@ -253,7 +258,11 @@ func _main(args []string) error {
 					ClientID:    c.GlobalString("client-id"),
 					AccessToken: c.GlobalString("access-token"),
 					Certificate: c.GlobalString("certificate"),
-				})
+				}, c.GlobalString("root-url"))
+
+				if c.GlobalIsSet("base-url") {
+					q.BaseURL = c.GlobalString("base-url")
+				}
 
 				client := artifact.New(q)
 
@@ -307,7 +316,8 @@ func _main(args []string) error {
 				}
 
 				if c.GlobalIsSet("part-size") {
-					ps, err := units.ParseBase2Bytes(c.String("part-size"))
+					var ps units.Base2Bytes
+					ps, err = units.ParseBase2Bytes(c.String("part-size"))
 					if err != nil {
 						return cli.NewExitError(err.Error(), ErrInternal)
 					}

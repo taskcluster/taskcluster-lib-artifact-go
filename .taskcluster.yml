@@ -27,8 +27,8 @@ tasks:
           - pull_request.synchronize
           - push
     scopes:
-      - secrets:get:repo:github.com/taskcluster/taskcluster-lib-artifact-go
       - generic-worker:cache:taskcluster-lib-artifact-go-checkout
+      - assume:project:taskcluster:taskcluster-lib-artifact-go-tester
     payload:
       features:
         taskclusterProxy: true
@@ -41,9 +41,6 @@ tasks:
         - git config --global core.autocrlf false
         - go version
         - go env
-        # extract .bat file from secret repo:github.com/taskcluster/taskcluster-lib-artifact-go
-        - 'type secrets | jq -r .secret.bat > env.bat' 
-        - env.bat
         - 'if not exist "%GOPATH%\src\github.com\taskcluster" mkdir "%GOPATH%\src\github.com\taskcluster"'
         - 'cd "%GOPATH%\src\github.com\taskcluster"'
         - 'if not exist taskcluster-lib-artifact-go git clone {{ event.head.repo.url }} taskcluster-lib-artifact-go'
@@ -84,10 +81,6 @@ tasks:
           directory: git
           format: zip
         - content:
-            url: http://taskcluster/secrets/v1/secret/repo:github.com/taskcluster/taskcluster-lib-artifact-go
-            sha256: ea77921a6e81d3f70989c661e0f179f645a9c5083d9ccae0f276dc79efc1a589
-          file: secrets
-        - content:
             url: https://github.com/stedolan/jq/releases/download/jq-1.5/jq-win64.exe
             sha256: ebecd840ba47efbf66822868178cc721a151060937f7ac406e3d31bd015bde94
           file: jq.exe
@@ -111,8 +104,8 @@ tasks:
           - pull_request.synchronize
           - push
     scopes:
-      - secrets:get:repo:github.com/taskcluster/taskcluster-lib-artifact-go
       - generic-worker:cache:taskcluster-lib-artifact-go-checkout
+      - assume:project:taskcluster:taskcluster-lib-artifact-go-tester
     payload:
       features:
         taskclusterProxy: true
@@ -127,8 +120,6 @@ tasks:
             export PATH="${GOPATH}/bin:${GOROOT}/bin:${PATH}"
             go version
             go env
-            cat secrets | jq -r .secret.sh > env.sh
-            source env.sh
             mkdir -p "${GOPATH}/src/github.com/taskcluster"
             cd "${GOPATH}/src/github.com/taskcluster"
             if [ ! -d taskcluster-lib-artifact-go/.git ]; then rm -rf taskcluster-lib-artifact-go; git clone '{{ event.head.repo.url }}' 'taskcluster-lib-artifact-go'; fi
@@ -155,10 +146,6 @@ tasks:
           directory: go1.10.1
           format: tar.gz
         - content:
-            url: http://localhost:8080/secrets/v1/secret/repo:github.com/taskcluster/taskcluster-lib-artifact-go
-            sha256: ea77921a6e81d3f70989c661e0f179f645a9c5083d9ccae0f276dc79efc1a589
-          file: secrets
-        - content:
             url: https://github.com/stedolan/jq/releases/download/jq-1.5/jq-osx-amd64
             sha256: 386e92c982a56fe4851468d7a931dfca29560cee306a0e66c6a1bd4065d3dac5
           file: jq
@@ -182,8 +169,8 @@ tasks:
           - pull_request.synchronize
           - push
     scopes:
-      - secrets:get:repo:github.com/taskcluster/taskcluster-lib-artifact-go
       - docker-worker:cache:taskcluster-lib-artifact-go-checkout
+      - assume:project:taskcluster:taskcluster-lib-artifact-go-tester
     payload:
       features:
         taskclusterProxy: true
@@ -198,8 +185,6 @@ tasks:
           go env
           curl -sL https://github.com/stedolan/jq/releases/download/jq-1.5/jq-linux64 > /usr/bin/jq
           chmod u+x /usr/bin/jq
-          curl -sL http://taskcluster/secrets/v1/secret/repo:github.com/taskcluster/taskcluster-lib-artifact-go | /usr/bin/jq -r .secret.sh > env.sh
-          source env.sh
           mkdir -p "${GOPATH}/src/github.com/taskcluster"
           cd "${GOPATH}/src/github.com/taskcluster"
           if [ ! -d taskcluster-lib-artifact-go/.git ]; then rm -rf taskcluster-lib-artifact-go; git clone '{{ event.head.repo.url }}' 'taskcluster-lib-artifact-go'; fi

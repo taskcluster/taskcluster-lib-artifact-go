@@ -72,7 +72,7 @@ func setupEnvironment() (*tcqueue.Queue, string, string, error) {
 		ClientID:    tcres.Credentials.ClientID,
 		AccessToken: tcres.Credentials.AccessToken,
 		Certificate: tcres.Credentials.Certificate,
-	})
+	}, os.Getenv("TASKCLUSTER_ROOT_URL"))
 
 	return taskQ, taskID, runID, nil
 
